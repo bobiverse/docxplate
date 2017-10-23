@@ -32,9 +32,9 @@ func structToXMLBytes(v interface{}) []byte {
 	buf = bytes.Replace(buf, []byte("<w-"), []byte("<w:"), -1)
 	buf = bytes.Replace(buf, []byte("</w-"), []byte("</w:"), -1)
 
-	// To keep correct elements order under <w:body> using parent <Elements>..</Elements>
-	buf = bytes.Replace(buf, []byte("<Elements>"), []byte(""), -1)
-	buf = bytes.Replace(buf, []byte("</Elements>"), []byte(""), -1)
+	// // To keep correct elements order under <w:body> using parent <Elements>..</Elements>
+	// buf = bytes.Replace(buf, []byte("<Elements>"), []byte(""), -1)
+	// buf = bytes.Replace(buf, []byte("</Elements>"), []byte(""), -1)
 
 	return buf
 }
