@@ -15,6 +15,7 @@ func (x *xmlElement) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error 
 	var el interface{}
 
 	// Make sure correct type selected for destination
+	// Select only types directly under <w:body>
 	switch start.Name.Local {
 	case "w-p":
 		el = &xmlParagraph{}

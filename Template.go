@@ -20,6 +20,12 @@ type Template struct {
 
 	// save all zip files here so we can build it again
 	files map[string]*zip.File
+
+	// only modified files (converted to []byte) save here
+	modified map[string][]byte
+
+	// hold all parsed params:values here
+	params map[string]interface{}
 }
 
 // OpenTemplate ..
@@ -27,7 +33,8 @@ func OpenTemplate(docpath string) (*Template, error) {
 	var err error
 
 	t := &Template{
-		path: docpath,
+		path:     docpath,
+		modified: map[string][]byte{},
 	}
 
 	// Unzip
@@ -66,8 +73,6 @@ func (t *Template) ExportDocx(path string) {
 
 	// Loop existing files to build docx archive again
 	for _, f := range t.files {
-		fmt.Printf("-- %v\n", f.Name)
-
 		var err error
 
 		// Read contents of single file inside zip
@@ -87,15 +92,30 @@ func (t *Template) ExportDocx(path string) {
 			continue
 		}
 
+		// // Move/Write struct-saved file to docx archive file back
+		// if f.Name == "word/document.xml" {
+		//
+		// 	// file to XML nodes struct
+		// 	xmlNodes := t.fileToXMLStruct(f.Name)
+		// 	buf := structToXMLBytes(xmlNodes)
+		//
+		// 	head := []byte(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` + "\n")
+		// 	buf = append(head, buf...)
+		// 	fw.Write(buf)
+		//
+		// 	ioutil.WriteFile("XXX.xml", buf, 0666) // DEBUG
+		// 	continue
+		// }
+
 		// Move/Write struct-saved file to docx archive file back
-		if f.Name == "word/document.xml" {
+		if buf, isModified := t.modified[f.Name]; isModified {
 
-			// file to XML nodes struct
-			xmlNodes := t.fileToXMLStruct(f.Name)
-			buf := structToXMLBytes(xmlNodes)
+			// // file to XML nodes struct
+			// xmlNodes := t.fileToXMLStruct(f.Name)
+			// buf := structToXMLBytes(xmlNodes)
 
-			head := []byte(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` + "\n")
-			buf = append(head, buf...)
+			// head := []byte(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` + "\n")
+			// buf = append(head, buf...)
 			fw.Write(buf)
 
 			ioutil.WriteFile("XXX.xml", buf, 0666) // DEBUG
@@ -126,14 +146,40 @@ func (t *Template) fileToXMLStruct(fname string) *xmlDocument {
 	d := &xmlDocument{}
 	err := xml.Unmarshal(buf, &d)
 	if err != nil {
-		color.Red("%v", err)
+		color.Red("fileToXMLStruct: %v", err)
 	}
 
-	// color.Magenta("%#v", d.Body)
-	// color.Cyan("%#v", d.Document.Body.Paragraphs[0].Records[0].Texts)
-	// color.Cyan("%#v", d.Document.Body.Paragraphs[0].Records[1].Texts[0].AttrList)
-	color.Cyan("%s", structToXMLBytes(d))
-	// color.Cyan("%s", structToXMLBytes(d.Body.Paragraphs))
-	// color.Cyan("%#v", d.Body.Paragraphs[0].Records[0].Properties)
+	// color.Cyan("%s", structToXMLBytes(d))
 	return d
+}
+
+// Params  - replace template placeholders with params
+// "Hello {{ Name }}!"" --> "Hello World!""
+func (t *Template) Params(v interface{}) {
+	t.params = collectParams("", v)
+
+	f := t.MainDocument()
+	// doc := t.fileToXMLStruct(f.Name)
+
+	// Params: slices
+	for k, v := range t.params {
+		vtype := fmt.Sprintf("%T", v)
+		if vtype[:2] != "[]" {
+			// skip non-slices
+			continue
+		}
+		color.Magenta("%-20s %-10T %v", k, v, v)
+	}
+
+	// When replace massive simple params: single int, string or single Struct.string
+	fr, _ := f.Open()
+	buf := readerBytes(fr)
+
+	for k, v := range t.params {
+		pkey := fmt.Sprintf("{{%s}}", k)
+		pval := fmt.Sprintf("%v", v)
+		color.Green("%-20s %-10T %v", k, v, v)
+		buf = bytes.Replace(buf, []byte(pkey), []byte(pval), -1)
+	}
+	t.modified[f.Name] = buf
 }

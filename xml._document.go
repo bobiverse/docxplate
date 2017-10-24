@@ -27,3 +27,8 @@ type xmlSectionProperties struct {
 	XMLName  xml.Name `xml:"w-sectPr"`
 	InnerXML string   `xml:",innerxml"`
 }
+
+// Walk all document nodes
+func (xdoc *xmlDocument) walk() {
+
+}
