@@ -16,8 +16,8 @@ func readerBytes(rdr io.ReadCloser) []byte {
 
 // Encode struct to xml code string
 func structToXMLBytes(v interface{}) []byte {
-	buf, err := xml.MarshalIndent(v, "", "  ")
-	// buf, err := xml.Marshal(v)
+	// buf, err := xml.MarshalIndent(v, "", "  ")
+	buf, err := xml.Marshal(v)
 	if err != nil {
 		fmt.Printf("error: %v\n", err)
 		return nil
