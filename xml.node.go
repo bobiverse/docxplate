@@ -1,6 +1,9 @@
 package docxplate
 
-import "encoding/xml"
+import (
+	"bytes"
+	"encoding/xml"
+)
 
 type xmlNode struct {
 	XMLName xml.Name
@@ -9,6 +12,7 @@ type xmlNode struct {
 	Nodes   []*xmlNode `xml:",any"`
 
 	parent *xmlNode
+	isNew  bool // added recently
 }
 
 func (xnode *xmlNode) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
@@ -55,4 +59,52 @@ func (xnode *xmlNode) parentString(limit int) string {
 	}
 
 	return s
+}
+
+// index of element inside parent.Nodes slice
+func (xnode *xmlNode) index() int {
+	if xnode.parent != nil {
+		for i, n := range xnode.parent.Nodes {
+			if xnode == n {
+				return i
+			}
+		}
+	}
+	return 0
+}
+
+// Clone and Add after this
+// return new xmlNode
+func (n *xmlNode) cloneAndAppend() *xmlNode {
+	parent := n.parent
+
+	// new copy node
+	nnew := n.clone()
+	nnew.isNew = true
+	nnew.Walk(func(nnew *xmlNode) {
+		nnew.Content = bytes.Replace(nnew.Content, []byte("}}"), []byte(" CLONE }}"), -1)
+	})
+
+	// Find node index in parent hierarchy and chose next index as copy place
+	i := n.index() + 1
+
+	// Insert into specific index
+	parent.Nodes = append(parent.Nodes[:i], append([]*xmlNode{nnew}, parent.Nodes[i:]...)...)
+
+	return nnew
+}
+
+// Copy node as new and all childs as new too
+// no shared addresses as it would be by only copying it
+func (xnode *xmlNode) clone() *xmlNode {
+	xnodeCopy := &xmlNode{}
+	*xnodeCopy = *xnode
+	xnodeCopy.Nodes = nil
+	xnodeCopy.isNew = true
+
+	for _, n := range xnode.Nodes {
+		xnodeCopy.Nodes = append(xnodeCopy.Nodes, n.clone())
+	}
+
+	return xnodeCopy
 }

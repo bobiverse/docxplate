@@ -101,26 +101,34 @@ func (t *Template) Params(v interface{}) {
 
 	xnode := t.fileToXMLStruct(f.Name)
 	xnode.Walk(func(xnode *xmlNode) {
-		isMatch, _ := regexp.Match(`{{( |row\.)(\w|\d|\.)+}}`, xnode.Content)
-		if !isMatch {
+		rxpattern := `{{( |row\.)(\w|\d|\.)+}}`
+		rgx, err := regexp.Compile(rxpattern)
+		// isMatch, _ := regexp.Match(rxpattern, xnode.Content)
+		if err != nil {
 			// placeholder not found, skip
 			return
 		}
 
+		matches := rgx.FindAll(xnode.Content, -1)
+		// matches := rgx.FindAllSubmatch(xnode.Content, -1)
+		if len(matches) == 0 {
+			return
+		}
+		color.HiBlue("MATCH: %s", matches[0])
+
 		// Get parent ROW element to multiply
 		// p, tblRow
 		nrow := xnode.parent
-		for i := 0; i < 100; i++ {
+		for {
 			if nrow == nil {
 				break
 			}
-			// Try maximum 100 levels up to find row element to avoid infinite loop
 			if nrow.isRowElement() {
 				color.Green("FOUND: %v", nrow.XMLName)
-				nrow.Nodes = append(nrow.Nodes, nrow)
-				nrow.Nodes = append(nrow.Nodes, nrow)
-				nrow.Nodes = append(nrow.Nodes, nrow)
-				color.Red("%v ----", len(nrow.Nodes))
+				nnew := nrow.cloneAndAppend()
+				nnew.Walk(func(nnew *xmlNode) {
+					nnew.Content = bytes.Replace(nnew.Content, []byte("}}"), []byte("--"), -1)
+				})
 				break
 			}
 			nrow = nrow.parent
