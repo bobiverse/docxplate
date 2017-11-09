@@ -92,29 +92,91 @@ func (t *Template) fileToXMLStruct(fname string) *xmlNode {
 	return xnode
 }
 
+// Row placeholders - clone row, append to existing structure and replace values
+func (t *Template) replaceRowParams(xnode *xmlNode) {
+	xnode.Walk(func(nrow *xmlNode) {
+		if !nrow.isRowElement() {
+			return
+		}
+
+		contents := nrow.Contents()
+
+		if !bytes.Contains(contents, []byte("{{")) {
+			// without any params
+			return
+		}
+
+		color.Cyan("ROW: %s", contents)
+
+		for pKey, pVal := range t.params {
+			if fmt.Sprintf("%T", pVal)[:2] != "[]" {
+				// only any kind of slices are valid
+				continue
+			}
+
+			if !bytes.Contains(contents, []byte("{{"+pKey+"}}")) && !bytes.Contains(contents, []byte("{{#"+pKey+"}}")) {
+				// specific placeholder not found
+				continue
+			}
+
+			// interface{} to string slice
+			values := toStringSlice(pVal)
+			color.HiCyan("\t{{%s}}: %v", pKey, values)
+
+			for i, sVal := range values {
+				sindex := fmt.Sprintf("%d", i+1) // because 0 is for programmers first number in a row
+				nnew := nrow.cloneAndAppend()
+				nnew.Walk(func(nnew *xmlNode) {
+					nnew.Content = bytes.Replace(nnew.Content, []byte("{{#"+pKey+"}}"), []byte(sindex), -1)
+					nnew.Content = bytes.Replace(nnew.Content, []byte("{{"+pKey+"}}"), []byte(sVal), -1)
+				})
+			}
+			nrow.delete()
+
+		}
+
+	})
+}
+func (t *Template) replaceColumnParams(xnode *xmlNode) {
+}
+func (t *Template) replaceSingleParams(xnode *xmlNode) {
+	xnode.Walk(func(n *xmlNode) {
+		if bytes.Index(n.Content, []byte("{{")) >= 0 {
+			// Try to replace on node that contains possible placeholder
+			for pKey, pVal := range t.params {
+				placeholder := fmt.Sprintf("{{%s}}", pKey) // {{Placeholder}}
+				sval := fmt.Sprintf("%v", pVal)            // interface{} to string
+				n.Content = bytes.Replace(n.Content, []byte(placeholder), []byte(sval), -1)
+			}
+		}
+	})
+}
+
 // Params  - replace template placeholders with params
 // "Hello {{ Name }}!"" --> "Hello World!""
 func (t *Template) Params(v interface{}) {
 	t.params = collectParams("", v)
 
 	f := t.MainDocument() // TODO: loop all xml files
-
 	xnode := t.fileToXMLStruct(f.Name)
-	xnode.Walk(func(xnode *xmlNode) {
-		rxpattern := `{{( |row\.)(\w|\d|\.)+}}`
-		rgx, err := regexp.Compile(rxpattern)
-		// isMatch, _ := regexp.Match(rxpattern, xnode.Content)
-		if err != nil {
-			// placeholder not found, skip
-			return
-		}
 
-		matches := rgx.FindAll(xnode.Content, -1)
-		// matches := rgx.FindAllSubmatch(xnode.Content, -1)
-		if len(matches) == 0 {
+	t.replaceRowParams(xnode)
+	t.replaceColumnParams(xnode)
+	t.replaceSingleParams(xnode)
+
+	// Save []bytes
+	t.modified[f.Name] = structToXMLBytes(xnode)
+
+	return
+
+	xnode.Walk(func(xnode *xmlNode) {
+		// Any param
+		rxpattern := `{{( |row\.|col\.)(\w|\d|\.|_)+}}`
+		isMatch, err := regexp.Match(rxpattern, xnode.Content)
+		if !isMatch || err != nil {
+			// placeholders not found, skip
 			return
 		}
-		color.HiBlue("MATCH: %s", matches[0])
 
 		// Get parent ROW element to multiply
 		// p, tblRow
@@ -123,28 +185,81 @@ func (t *Template) Params(v interface{}) {
 			if nrow == nil {
 				break
 			}
-			if nrow.isRowElement() {
-				color.Green("FOUND: %v", nrow.XMLName)
-				nnew := nrow.cloneAndAppend()
-				nnew.Walk(func(nnew *xmlNode) {
-					nnew.Content = bytes.Replace(nnew.Content, []byte("}}"), []byte("--"), -1)
-				})
-				break
+
+			if !nrow.isRowElement() {
+				nrow = nrow.parent
+				continue
 			}
+
+			markForRemoval := false
+
+			// Loop params and find slices for row cloning
+			for pKey, pVal := range t.params {
+				var svalues []string
+
+				// convert all slice values to string values
+				switch arr := pVal.(type) {
+				case []string:
+					color.Red("STRING: %v", arr)
+				// 	svalues = arr
+				case []int:
+					for _, val := range arr {
+						// prepend item because cloning row adds new lines in reverse
+						sval := fmt.Sprintf("%v", val)
+						svalues = append([]string{sval}, svalues...)
+					}
+				default:
+					continue
+				}
+
+				// Row clone and replace
+				if bytes.Contains(nrow.Contents(), []byte("row.")) {
+					markForRemoval = true
+					for _, s := range svalues {
+						// Row clone and replace
+						nnew := nrow.cloneAndAppend()
+						nnew.Walk(func(nnew *xmlNode) {
+							// Replace in every sub-node as it there could be multiple plain text nodes
+							nnew.Content = bytes.Replace(nnew.Content, []byte("{{row."+pKey+"}}"), []byte(s), -1)
+						})
+					}
+				}
+
+				// Col clone and replace
+				// color.Red("{{col.%s}}", pKey)
+				if bytes.Contains(nrow.Contents(), []byte("col.")) {
+					for i, s := range svalues {
+						nrow.Walk(func(n *xmlNode) {
+							// Replace in every sub-node as it there could be multiple plain text nodes
+							if bytes.Contains(n.Content, []byte("{{col.")) {
+								nnew := n.cloneAndAppend()
+								nnew.Content = bytes.Replace(nnew.Content, []byte("{{col."+pKey+"}}"), []byte(s), -1)
+								if i == 0 {
+									color.Red("i==0 -- %v", pKey)
+									// Last item trim. Index=0 because of cloning last cloned item is first in list
+									nnew.Content = bytes.TrimRight(nnew.Content, ",;- \t\n|/+")
+								}
+								if i == len(svalues)-1 {
+									color.Red("i==last -- %v", pKey)
+									// After last item cloned remove clone original woith placeholder param
+									n.delete()
+								}
+							}
+						})
+					}
+				}
+
+			}
+
+			if markForRemoval {
+				nrow.delete() //delete original placeholder row
+			}
+
 			nrow = nrow.parent
+
 		}
 		color.Yellow("%-50s (%v)", string(xnode.Content), xnode.parentString(6))
 	})
-
-	// Params: slices
-	for k, v := range t.params {
-		vtype := fmt.Sprintf("%T", v)
-		if vtype[:2] != "[]" {
-			// skip non-slices
-			continue
-		}
-		color.Magenta("%-20s %-10T %v", k, v, v)
-	}
 
 	// When replace massive simple params: single int, string or single Struct.string
 	// fr, _ := f.Open()

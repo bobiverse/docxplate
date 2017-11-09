@@ -1,9 +1,6 @@
 package docxplate
 
-import (
-	"bytes"
-	"encoding/xml"
-)
+import "encoding/xml"
 
 type xmlNode struct {
 	XMLName xml.Name
@@ -24,6 +21,9 @@ func (xnode *xmlNode) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error
 // Walk down all nodes and do custom stuff with given function
 func (xnode *xmlNode) Walk(fn func(*xmlNode)) {
 	for _, n := range xnode.Nodes {
+		if n == nil {
+			continue
+		}
 
 		fn(n) // do your custom stuff
 
@@ -32,6 +32,14 @@ func (xnode *xmlNode) Walk(fn func(*xmlNode)) {
 			n.Walk(fn)
 		}
 	}
+}
+
+func (xnode *xmlNode) Contents() []byte {
+	var buf []byte
+	xnode.Walk(func(n *xmlNode) {
+		buf = append(buf, n.Content...)
+	})
+	return buf
 }
 
 // Row element means it's available for multiplying
@@ -70,7 +78,7 @@ func (xnode *xmlNode) index() int {
 			}
 		}
 	}
-	return 0
+	return -1
 }
 
 // Clone and Add after this
@@ -82,11 +90,16 @@ func (n *xmlNode) cloneAndAppend() *xmlNode {
 	nnew := n.clone()
 	nnew.isNew = true
 	nnew.Walk(func(nnew *xmlNode) {
-		nnew.Content = bytes.Replace(nnew.Content, []byte("}}"), []byte(" CLONE }}"), -1)
+		// nnew.Content = bytes.Replace(nnew.Content, []byte("}}"), []byte(" CLONE }}"), -1)
 	})
 
 	// Find node index in parent hierarchy and chose next index as copy place
-	i := n.index() + 1
+	i := n.index()
+	if i == -1 {
+		// Return existing instance to avoid nil errors
+		// But this node not added to xml structure list, so dissapears in output
+		return nnew
+	}
 
 	// Insert into specific index
 	parent.Nodes = append(parent.Nodes[:i], append([]*xmlNode{nnew}, parent.Nodes[i:]...)...)
@@ -107,4 +120,12 @@ func (xnode *xmlNode) clone() *xmlNode {
 	}
 
 	return xnodeCopy
+}
+
+// Delete node
+func (xnode *xmlNode) delete() {
+	index := xnode.index()
+	if index != -1 {
+		xnode.parent.Nodes[index] = nil
+	}
 }

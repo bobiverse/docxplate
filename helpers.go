@@ -34,3 +34,26 @@ func structToXMLBytes(v interface{}) []byte {
 
 	return buf
 }
+
+// interface{} to []string
+func toStringSlice(v interface{}) []string {
+	var sarr []string
+
+	switch arr := v.(type) {
+	case []string:
+		sarr = arr
+
+	case []float64:
+		for _, val := range arr {
+			sarr = append(sarr, fmt.Sprintf("%v", val))
+		}
+
+	case []int:
+		for _, val := range arr {
+			sarr = append(sarr, fmt.Sprintf("%v", val))
+		}
+
+	}
+
+	return sarr
+}
