@@ -9,7 +9,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
-	"regexp"
+	"strings"
 
 	"github.com/fatih/color"
 )
@@ -112,8 +112,12 @@ func (t *Template) replaceRowParams(xnode *xmlNode) {
 		color.Cyan("ROW: %s", contents)
 
 		for pKey, pVal := range t.params {
-			if fmt.Sprintf("%T", pVal)[:2] != "[]" {
-				// only any kind of slices are valid
+			vtype := fmt.Sprintf("%T", pVal)
+			isSlice := strings.HasPrefix(vtype, "[]")
+			isMap := strings.HasPrefix(vtype, "map[")
+			if !isSlice && !isMap {
+				color.Red("%v", pVal)
+				// slices and maps are allowed
 				continue
 			}
 
@@ -123,15 +127,14 @@ func (t *Template) replaceRowParams(xnode *xmlNode) {
 			}
 
 			// interface{} to string slice
-			values := toStringSlice(pVal)
-			color.HiCyan("\t{{%s}}: %v", pKey, values)
+			mvalues := toMap(pVal)
+			color.HiCyan("\t{{%s}}: %v", pKey, mvalues)
 
-			for i, sVal := range values {
-				sindex := fmt.Sprintf("%d", i+1) // because 0 is for programmers first number in a row
+			for skey, sval := range mvalues {
 				nnew := nrow.cloneAndAppend()
 				nnew.Walk(func(nnew *xmlNode) {
-					nnew.Content = bytes.Replace(nnew.Content, []byte("{{#"+pKey+"}}"), []byte(sindex), -1)
-					nnew.Content = bytes.Replace(nnew.Content, []byte("{{"+pKey+"}}"), []byte(sVal), -1)
+					nnew.Content = bytes.Replace(nnew.Content, []byte("{{#"+pKey+"}}"), []byte(skey), -1)
+					nnew.Content = bytes.Replace(nnew.Content, []byte("{{"+pKey+"}}"), []byte(sval), -1)
 				})
 			}
 			nrow.delete()
@@ -214,116 +217,12 @@ func (t *Template) Params(v interface{}) {
 	t.replaceColumnParams(xnode)
 	t.replaceSingleParams(xnode)
 
-	// Save []bytes
-	t.modified[f.Name] = structToXMLBytes(xnode)
-
-	return
-
-	xnode.Walk(func(xnode *xmlNode) {
-		// Any param
-		rxpattern := `{{( |row\.|col\.)(\w|\d|\.|_)+}}`
-		isMatch, err := regexp.Match(rxpattern, xnode.Content)
-		if !isMatch || err != nil {
-			// placeholders not found, skip
-			return
-		}
-
-		// Get parent ROW element to multiply
-		// p, tblRow
-		nrow := xnode.parent
-		for {
-			if nrow == nil {
-				break
-			}
-
-			if !nrow.isRowElement() {
-				nrow = nrow.parent
-				continue
-			}
-
-			markForRemoval := false
-
-			// Loop params and find slices for row cloning
-			for pKey, pVal := range t.params {
-				var svalues []string
-
-				// convert all slice values to string values
-				switch arr := pVal.(type) {
-				case []string:
-					color.Red("STRING: %v", arr)
-				// 	svalues = arr
-				case []int:
-					for _, val := range arr {
-						// prepend item because cloning row adds new lines in reverse
-						sval := fmt.Sprintf("%v", val)
-						svalues = append([]string{sval}, svalues...)
-					}
-				default:
-					continue
-				}
-
-				// Row clone and replace
-				if bytes.Contains(nrow.Contents(), []byte("row.")) {
-					markForRemoval = true
-					for _, s := range svalues {
-						// Row clone and replace
-						nnew := nrow.cloneAndAppend()
-						nnew.Walk(func(nnew *xmlNode) {
-							// Replace in every sub-node as it there could be multiple plain text nodes
-							nnew.Content = bytes.Replace(nnew.Content, []byte("{{row."+pKey+"}}"), []byte(s), -1)
-						})
-					}
-				}
-
-				// Col clone and replace
-				// color.Red("{{col.%s}}", pKey)
-				if bytes.Contains(nrow.Contents(), []byte("col.")) {
-					for i, s := range svalues {
-						nrow.Walk(func(n *xmlNode) {
-							// Replace in every sub-node as it there could be multiple plain text nodes
-							if bytes.Contains(n.Content, []byte("{{col.")) {
-								nnew := n.cloneAndAppend()
-								nnew.Content = bytes.Replace(nnew.Content, []byte("{{col."+pKey+"}}"), []byte(s), -1)
-								if i == 0 {
-									color.Red("i==0 -- %v", pKey)
-									// Last item trim. Index=0 because of cloning last cloned item is first in list
-									nnew.Content = bytes.TrimRight(nnew.Content, ",;- \t\n|/+")
-								}
-								if i == len(svalues)-1 {
-									color.Red("i==last -- %v", pKey)
-									// After last item cloned remove clone original woith placeholder param
-									n.delete()
-								}
-							}
-						})
-					}
-				}
-
-			}
-
-			if markForRemoval {
-				nrow.delete() //delete original placeholder row
-			}
-
-			nrow = nrow.parent
-
-		}
-		color.Yellow("%-50s (%v)", string(xnode.Content), xnode.parentString(6))
-	})
-
-	// When replace massive simple params: single int, string or single Struct.string
-	// fr, _ := f.Open()
-	// buf := readerBytes(fr)
-	buf := structToXMLBytes(xnode)
-
 	for k, v := range t.params {
-		pkey := fmt.Sprintf("{{%s}}", k)
-		pval := fmt.Sprintf("%v", v)
-		color.Green("%-20s %-10T %v", k, v, v)
-		buf = bytes.Replace(buf, []byte(pkey), []byte(pval), -1)
+		color.Green("%-20s %-20T %v", k, v, v)
 	}
 
-	t.modified[f.Name] = buf
+	// Save []bytes
+	t.modified[f.Name] = structToXMLBytes(xnode)
 }
 
 // ExportDocx - save new/modified docx based on template
