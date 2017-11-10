@@ -46,7 +46,7 @@ func (xnode *xmlNode) Contents() []byte {
 // p, tblRow
 func (xnode *xmlNode) isRowElement() bool {
 	switch xnode.XMLName.Local {
-	case "w-p", "w-tblRow":
+	case "w-p", "w-tr":
 		return true
 	}
 	return false

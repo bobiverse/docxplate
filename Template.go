@@ -93,8 +93,11 @@ func (t *Template) fileToXMLStruct(fname string) *xmlNode {
 }
 
 // Row placeholders - clone row, append to existing structure and replace values
+// Numbers: []int{1,3,5}
+// {{Numbers}}
 func (t *Template) replaceRowParams(xnode *xmlNode) {
 	xnode.Walk(func(nrow *xmlNode) {
+
 		if !nrow.isRowElement() {
 			return
 		}
@@ -132,12 +135,59 @@ func (t *Template) replaceRowParams(xnode *xmlNode) {
 				})
 			}
 			nrow.delete()
-
 		}
 
 	})
 }
+
+// Inline placeholders - clone text node, append to existing structure and replace values
+// Numbers: []int{1,3,5}
+// {{Numbers ,}}
 func (t *Template) replaceColumnParams(xnode *xmlNode) {
+	xnode.Walk(func(n *xmlNode) {
+		if bytes.Index(n.Content, []byte("{{")) >= 0 {
+			for pKey, pVal := range t.params {
+
+				pholder := []byte("{{" + pKey + " ") //space at the end
+
+				if fmt.Sprintf("%T", pVal)[:2] != "[]" {
+					// only any kind of slices are valid
+					continue
+				}
+
+				// with space {{Placeholder ,}}, {{Placeholder , }}
+				if !bytes.Contains(n.Content, pholder) {
+					// specific placeholder not found
+					continue
+				}
+
+				// Separator is last part of placeholder after space
+				// {{Numbers ,}} --> ","
+				// {{Numbers  , }} --> " , " // spaces around
+				var sep []byte
+				arr := bytes.SplitN(n.Content, pholder, 2) // aaaa {{Numbers ,}} bbb
+				if len(arr) == 2 {
+					arr = bytes.SplitN(arr[1], []byte("}}"), 2) // ,}} bbb
+					sep = arr[0]                                // ,
+				}
+				color.Blue("SEP[%s]", sep)
+
+				placeholder := fmt.Sprintf("{{%s %s}}", pKey, sep) // {{Placeholder}}
+
+				// interface{} to string slice
+				values := toStringSlice(pVal)
+				color.HiCyan("\t{{%s}}: %v", pKey, values)
+
+				for _, val := range values {
+					sval := fmt.Sprintf("%v%s", val, sep) // interface{} to string
+					n.Content = bytes.Replace(n.Content, []byte(placeholder), []byte(sval+placeholder), -1)
+				}
+				n.Content = bytes.Replace(n.Content, []byte(string(sep)+placeholder), nil, 1)
+				// n.Content = bytes.Replace(n.Content, []byte(placeholder), nil, 1)
+
+			}
+		}
+	})
 }
 func (t *Template) replaceSingleParams(xnode *xmlNode) {
 	xnode.Walk(func(n *xmlNode) {
