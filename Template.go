@@ -116,7 +116,6 @@ func (t *Template) replaceRowParams(xnode *xmlNode) {
 			isSlice := strings.HasPrefix(vtype, "[]")
 			isMap := strings.HasPrefix(vtype, "map[")
 			if !isSlice && !isMap {
-				color.Red("%v", pVal)
 				// slices and maps are allowed
 				continue
 			}
