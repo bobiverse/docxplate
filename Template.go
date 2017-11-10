@@ -109,8 +109,6 @@ func (t *Template) replaceRowParams(xnode *xmlNode) {
 			return
 		}
 
-		color.Cyan("ROW: %s", contents)
-
 		for pKey, pVal := range t.params {
 			vtype := fmt.Sprintf("%T", pVal)
 			isSlice := strings.HasPrefix(vtype, "[]")
@@ -152,8 +150,11 @@ func (t *Template) replaceColumnParams(xnode *xmlNode) {
 
 				pholder := []byte("{{" + pKey + " ") //space at the end
 
-				if fmt.Sprintf("%T", pVal)[:2] != "[]" {
-					// only any kind of slices are valid
+				vtype := fmt.Sprintf("%T", pVal)
+				isSlice := strings.HasPrefix(vtype, "[]")
+				isMap := strings.HasPrefix(vtype, "map[")
+				if !isSlice && !isMap {
+					// slices and maps are allowed
 					continue
 				}
 
@@ -177,7 +178,7 @@ func (t *Template) replaceColumnParams(xnode *xmlNode) {
 				placeholder := fmt.Sprintf("{{%s %s}}", pKey, sep) // {{Placeholder}}
 
 				// interface{} to string slice
-				values := toStringSlice(pVal)
+				values := toMap(pVal)
 				color.HiCyan("\t{{%s}}: %v", pKey, values)
 
 				for _, val := range values {
@@ -212,6 +213,8 @@ func (t *Template) Params(v interface{}) {
 	f := t.MainDocument() // TODO: loop all xml files
 	xnode := t.fileToXMLStruct(f.Name)
 
+	t.mergeSimilarNodes(xnode)
+
 	t.replaceRowParams(xnode)
 	t.replaceColumnParams(xnode)
 	t.replaceSingleParams(xnode)
@@ -222,6 +225,40 @@ func (t *Template) Params(v interface{}) {
 
 	// Save []bytes
 	t.modified[f.Name] = structToXMLBytes(xnode)
+}
+
+// Merge similar nodes of same styles.
+// Like "w-p" (Record) can hold multiple "w-r" with same styles
+// -
+// If these nodes not fixed than params replace can not be done as
+// replacer process nodes one by one
+func (t *Template) mergeSimilarNodes(xnode *xmlNode) {
+	xnode.Walk(func(xnode *xmlNode) {
+		if !bytes.Contains(xnode.Contents(), []byte("{{")) {
+			return
+		}
+		// parent scope
+		color.Yellow("%v", xnode.XMLName)
+
+		var nprev *xmlNode
+		xnode.Walk(func(n *xmlNode) {
+			//child scope
+			if n.XMLName.Local != "w-r" {
+				return
+			}
+
+			if nprev != nil {
+				color.Cyan("%v", n.Nodes[0])
+				color.HiCyan("%v", nprev.Nodes[0])
+			}
+
+			if nprev != nil && n.Nodes[0] == nprev.Nodes[0] {
+				color.Yellow("\tMERGE: %v -- %s", n.XMLName, n.Contents())
+			}
+			nprev = n
+		})
+
+	})
 }
 
 // ExportDocx - save new/modified docx based on template
