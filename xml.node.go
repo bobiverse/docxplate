@@ -1,6 +1,9 @@
 package docxplate
 
-import "encoding/xml"
+import (
+	"bytes"
+	"encoding/xml"
+)
 
 type xmlNode struct {
 	XMLName xml.Name
@@ -12,6 +15,7 @@ type xmlNode struct {
 	isNew  bool // added recently
 }
 
+// UnmarshalXML ..
 func (xnode *xmlNode) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	// n.Attrs = start.Attr
 	type x xmlNode
@@ -34,12 +38,21 @@ func (xnode *xmlNode) Walk(fn func(*xmlNode)) {
 	}
 }
 
+// Contents - return contents of this and all childs contents merge
 func (xnode *xmlNode) Contents() []byte {
 	var buf []byte
 	xnode.Walk(func(n *xmlNode) {
 		buf = append(buf, n.Content...)
 	})
 	return buf
+}
+
+// StylesString - string representation of styles of node
+func (xnode *xmlNode) StylesString() string {
+	buf := structToXMLBytes(xnode)
+	buf = bytes.Replace(buf, xnode.Contents(), nil, -1)
+	// fmt.Printf("\t\t%s\n\n", buf)
+	return string(buf)
 }
 
 // Row element means it's available for multiplying
@@ -128,4 +141,12 @@ func (xnode *xmlNode) delete() {
 	if index != -1 {
 		xnode.parent.Nodes[index] = nil
 	}
+}
+
+// ReplaceInContents - replace plain text contents with something
+func (xnode *xmlNode) ReplaceInContents(old, new []byte) []byte {
+	xnode.Walk(func(n *xmlNode) {
+		n.Content = bytes.Replace(n.Content, old, new, -1)
+	})
+	return xnode.Contents()
 }

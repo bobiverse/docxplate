@@ -25,7 +25,7 @@ func collectParams(parentPrefix string, v interface{}) map[string]interface{} {
 
 		color.Blue("%T -- %-10s %-10s %#v=%+v", fval, fval.Type(), fval.Kind(), fname, fval)
 
-		// Forst assign any
+		// First assign any
 		m[parentPrefix+fname] = fval.Interface()
 		if !strings.Contains(fval.Type().String(), "main.") {
 			// Simple slices (without []main.X or []*main.X ) leave as is
@@ -38,8 +38,8 @@ func collectParams(parentPrefix string, v interface{}) map[string]interface{} {
 		kind := fval.Kind()
 		switch kind {
 		case reflect.Slice:
-			m[fname] = color.RedString("-- TODO: %s --", kind.String())
-			// m2 = collectParams(fname+".", fval)
+			// m[fname] = color.RedString("-- TODO: %s --", kind.String())
+			// m2 = collectParams(fname+".", fval[0].Interface())
 		case reflect.Struct:
 			m2 = collectParams(fname+".", fval.Interface())
 		}

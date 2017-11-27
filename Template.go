@@ -125,7 +125,7 @@ func (t *Template) replaceRowParams(xnode *xmlNode) {
 
 			// interface{} to string slice
 			mvalues := toMap(pVal)
-			color.HiCyan("\t{{%s}}: %v", pKey, mvalues)
+			// color.HiCyan("\t{{%s}}: %v", pKey, mvalues)
 
 			for skey, sval := range mvalues {
 				nnew := nrow.cloneAndAppend()
@@ -238,7 +238,7 @@ func (t *Template) mergeSimilarNodes(xnode *xmlNode) {
 			return
 		}
 		// parent scope
-		color.Yellow("%v", xnode.XMLName)
+		// color.Yellow("%v", xnode.XMLName)
 
 		var nprev *xmlNode
 		xnode.Walk(func(n *xmlNode) {
@@ -247,14 +247,23 @@ func (t *Template) mergeSimilarNodes(xnode *xmlNode) {
 				return
 			}
 
-			if nprev != nil {
-				color.Cyan("%v", n.Nodes[0])
-				color.HiCyan("%v", nprev.Nodes[0])
+			is := bytes.Contains(n.Contents(), []byte("{{")) || bytes.Contains(n.Contents(), []byte("}}"))
+
+			if nprev != nil && is {
+				// color.Magenta("M0: %s", n.Contents())
+				color.Cyan("\tM1: %+v %s", nprev.Nodes, nprev.Contents())
+				color.HiCyan("\tM2: %+v %s", n.Nodes, n.Contents())
 			}
 
-			if nprev != nil && n.Nodes[0] == nprev.Nodes[0] {
-				color.Yellow("\tMERGE: %v -- %s", n.XMLName, n.Contents())
+			if nprev != nil && n.StylesString() == nprev.StylesString() {
+				color.Yellow("\tMERGE: %s%s", nprev.Contents(), color.HiYellowString("%s", n.Contents()))
+				bufMerged := append(nprev.Contents(), n.Contents()...)
+				nprev.ReplaceInContents(nprev.Contents(), bufMerged)
+				n.ReplaceInContents(n.Contents(), nil)
+
+				return
 			}
+			fmt.Printf("\n\n")
 			nprev = n
 		})
 
