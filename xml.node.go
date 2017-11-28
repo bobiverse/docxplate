@@ -3,6 +3,7 @@ package docxplate
 import (
 	"bytes"
 	"encoding/xml"
+	"regexp"
 )
 
 type xmlNode struct {
@@ -50,7 +51,21 @@ func (xnode *xmlNode) Contents() []byte {
 // StylesString - string representation of styles of node
 func (xnode *xmlNode) StylesString() string {
 	buf := structToXMLBytes(xnode)
-	buf = bytes.Replace(buf, xnode.Contents(), nil, -1)
+
+	// ignore some tags
+	rgx, _ := regexp.Compile(`<w:sz.+?</w:sz(|.+?)>`) //w:sz, w:szCs
+	buf = rgx.ReplaceAll(buf, nil)
+
+	rgx, _ = regexp.Compile(`<w:la(|n)g.+?</w:la(|n)g>`) //w:lang
+	buf = rgx.ReplaceAll(buf, nil)
+
+	rgx, _ = regexp.Compile(`<w:rFonts.+?</w:rFonts>`) //w:rFonts
+	buf = rgx.ReplaceAll(buf, nil)
+
+	// remove any contents from <w:t>...</w:t>
+	rgx, _ = regexp.Compile(`<w:t>.+?</w:t>`)
+	buf = rgx.ReplaceAll(buf, nil)
+
 	// fmt.Printf("\t\t%s\n\n", buf)
 	return string(buf)
 }
@@ -63,6 +78,19 @@ func (xnode *xmlNode) isRowElement() bool {
 		return true
 	}
 	return false
+}
+
+// Does any of child holds contents
+// DIFFERENCE: xnode.Contents() returns plaintext concatenated from all childs
+// and this function checks every child node separately
+func (xnode *xmlNode) AnyChildContains(buf []byte) bool {
+	var found bool
+	xnode.Walk(func(n *xmlNode) {
+		if bytes.Contains(n.Content, buf) {
+			found = true
+		}
+	})
+	return found
 }
 
 // Show node parents as string chain
@@ -102,9 +130,9 @@ func (n *xmlNode) cloneAndAppend() *xmlNode {
 	// new copy node
 	nnew := n.clone()
 	nnew.isNew = true
-	nnew.Walk(func(nnew *xmlNode) {
-		// nnew.Content = bytes.Replace(nnew.Content, []byte("}}"), []byte(" CLONE }}"), -1)
-	})
+	// nnew.Walk(func(nnew *xmlNode) {
+	// 	// nnew.Content = bytes.Replace(nnew.Content, []byte("}}"), []byte(" CLONE }}"), -1)
+	// })
 
 	// Find node index in parent hierarchy and chose next index as copy place
 	i := n.index()
@@ -123,6 +151,10 @@ func (n *xmlNode) cloneAndAppend() *xmlNode {
 // Copy node as new and all childs as new too
 // no shared addresses as it would be by only copying it
 func (xnode *xmlNode) clone() *xmlNode {
+	if xnode == nil {
+		return nil
+	}
+
 	xnodeCopy := &xmlNode{}
 	*xnodeCopy = *xnode
 	xnodeCopy.Nodes = nil

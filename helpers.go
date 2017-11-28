@@ -96,7 +96,6 @@ func toMap(v interface{}) map[string]string {
 		for key, val := range arr {
 			fn(key, val)
 		}
-
 	}
 
 	return m

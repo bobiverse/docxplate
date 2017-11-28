@@ -26,7 +26,7 @@ type Template struct {
 	modified map[string][]byte
 
 	// hold all parsed params:values here
-	params map[string]interface{}
+	params ParamList
 }
 
 // OpenTemplate ..
@@ -109,33 +109,44 @@ func (t *Template) replaceRowParams(xnode *xmlNode) {
 			return
 		}
 
-		for pKey, pVal := range t.params {
-			vtype := fmt.Sprintf("%T", pVal)
-			isSlice := strings.HasPrefix(vtype, "[]")
-			isMap := strings.HasPrefix(vtype, "map[")
-			if !isSlice && !isMap {
-				// slices and maps are allowed
-				continue
+		// Loop all params and try to replace
+		t.params.Walk(func(p *Param) {
+			if p.Params == nil {
+				return
 			}
 
-			if !bytes.Contains(contents, []byte("{{"+pKey+"}}")) && !bytes.Contains(contents, []byte("{{#"+pKey+"}}")) {
+			// isValidKey := bytes.Contains(contents, []byte(p.Placeholder()))                 // {{Name}} --> John
+			// isValidKey = isValidKey || bytes.Contains(contents, []byte(p.PlaceholderKey())) // {{#Name}} --> 0
+			// isValidKey = isValidKey || bytes.Contains(contents, []byte(p.PlaceholderMultiple())) // {{Name.FirstLetter}} --> J
+
+			isValidKey := nrow.AnyChildContains([]byte(p.Placeholder()))
+			isValidKey = isValidKey || nrow.AnyChildContains([]byte(p.PlaceholderKey()))
+			isValidKey = isValidKey || nrow.AnyChildContains([]byte(p.PlaceholderMultiple()))
+
+			if !isValidKey {
 				// specific placeholder not found
-				continue
+				return
 			}
 
-			// interface{} to string slice
-			mvalues := toMap(pVal)
-			// color.HiCyan("\t{{%s}}: %v", pKey, mvalues)
-
-			for skey, sval := range mvalues {
+			// Add new xml nodes for every param sub-param
+			for _, p2 := range p.Params {
+				color.Blue("%30s = %v", p.Placeholder(), p2.Value)
 				nnew := nrow.cloneAndAppend()
 				nnew.Walk(func(nnew *xmlNode) {
-					nnew.Content = bytes.Replace(nnew.Content, []byte("{{#"+pKey+"}}"), []byte(skey), -1)
-					nnew.Content = bytes.Replace(nnew.Content, []byte("{{"+pKey+"}}"), []byte(sval), -1)
+					color.HiBlue("\t%30s = %s", p.Placeholder(), nnew.Content)
+
+					// oldContent := nnew.Content
+					nnew.Content = bytes.Replace(nnew.Content, []byte(p.Placeholder()), []byte(p2.Value), -1)
+					nnew.Content = bytes.Replace(nnew.Content, []byte(p.PlaceholderKey()), []byte(p2.Key), -1)
+					// if bytes.Equal(oldContent, nnew.Content) {
+					// 	nnew.Content = []byte("xxx")
+					// }
 				})
 			}
+
+			// Remove original row which contains placeholder
 			nrow.delete()
-		}
+		})
 
 	})
 }
@@ -146,11 +157,11 @@ func (t *Template) replaceRowParams(xnode *xmlNode) {
 func (t *Template) replaceColumnParams(xnode *xmlNode) {
 	xnode.Walk(func(n *xmlNode) {
 		if bytes.Index(n.Content, []byte("{{")) >= 0 {
-			for pKey, pVal := range t.params {
+			for _, p := range t.params {
 
-				pholder := []byte("{{" + pKey + " ") //space at the end
+				pholder := []byte("{{" + p.Key + " ") //space at the end
 
-				vtype := fmt.Sprintf("%T", pVal)
+				vtype := fmt.Sprintf("%T", p.Value)
 				isSlice := strings.HasPrefix(vtype, "[]")
 				isMap := strings.HasPrefix(vtype, "map[")
 				if !isSlice && !isMap {
@@ -175,11 +186,11 @@ func (t *Template) replaceColumnParams(xnode *xmlNode) {
 				}
 				color.Blue("SEP[%s]", sep)
 
-				placeholder := fmt.Sprintf("{{%s %s}}", pKey, sep) // {{Placeholder}}
+				placeholder := fmt.Sprintf("{{%s %s}}", p.Key, sep) // {{Placeholder}}
 
 				// interface{} to string slice
-				values := toMap(pVal)
-				color.HiCyan("\t{{%s}}: %v", pKey, values)
+				values := toMap(p.Value)
+				color.HiCyan("\t{{%s}}: %v", p.Key, values)
 
 				for _, val := range values {
 					sval := fmt.Sprintf("%v%s", val, sep) // interface{} to string
@@ -196,11 +207,10 @@ func (t *Template) replaceSingleParams(xnode *xmlNode) {
 	xnode.Walk(func(n *xmlNode) {
 		if bytes.Index(n.Content, []byte("{{")) >= 0 {
 			// Try to replace on node that contains possible placeholder
-			for pKey, pVal := range t.params {
-				placeholder := fmt.Sprintf("{{%s}}", pKey) // {{Placeholder}}
-				sval := fmt.Sprintf("%v", pVal)            // interface{} to string
-				n.Content = bytes.Replace(n.Content, []byte(placeholder), []byte(sval), -1)
-			}
+			t.params.Walk(func(p *Param) {
+				// color.Blue("%30s --> %+v", p.Placeholder(), p.Value)
+				n.Content = bytes.Replace(n.Content, []byte(p.Placeholder()), []byte(p.Value), -1)
+			})
 		}
 	})
 }
@@ -208,7 +218,8 @@ func (t *Template) replaceSingleParams(xnode *xmlNode) {
 // Params  - replace template placeholders with params
 // "Hello {{ Name }}!"" --> "Hello World!""
 func (t *Template) Params(v interface{}) {
-	t.params = collectParams("", v)
+	// t.params = collectParams("", v)
+	t.params = StructParams(v)
 
 	f := t.MainDocument() // TODO: loop all xml files
 	xnode := t.fileToXMLStruct(f.Name)
@@ -216,11 +227,11 @@ func (t *Template) Params(v interface{}) {
 	t.mergeSimilarNodes(xnode)
 
 	t.replaceRowParams(xnode)
-	t.replaceColumnParams(xnode)
-	t.replaceSingleParams(xnode)
+	// t.replaceColumnParams(xnode)
+	// t.replaceSingleParams(xnode)
 
-	for k, v := range t.params {
-		color.Green("%-20s %-20T %v", k, v, v)
+	for _, p := range t.params {
+		color.Green("|| %-20s %v", p.Key, p.Value)
 	}
 
 	// Save []bytes
@@ -247,23 +258,28 @@ func (t *Template) mergeSimilarNodes(xnode *xmlNode) {
 				return
 			}
 
-			is := bytes.Contains(n.Contents(), []byte("{{")) || bytes.Contains(n.Contents(), []byte("}}"))
+			if nprev != nil {
 
-			if nprev != nil && is {
-				// color.Magenta("M0: %s", n.Contents())
-				color.Cyan("\tM1: %+v %s", nprev.Nodes, nprev.Contents())
-				color.HiCyan("\tM2: %+v %s", n.Nodes, n.Contents())
+				// Merge only same parent nodes
+				isMergable := nprev.parent == n.parent
+				isMergable = isMergable && n.StylesString() == nprev.StylesString()
+
+				// color.Magenta("\n\n\nM0: %v / %v", nprev.parent == n.parent, nprev.StylesString() == n.StylesString())
+				// color.HiMagenta("S1: %s", nprev.StylesString())
+				// color.HiMagenta("S2: %s", n.StylesString())
+				// color.Cyan("\tM1: Parent:%p %s", nprev.parent, nprev.Contents())
+				// color.HiCyan("\tM2: Parent:%p %s", n.parent, n.Contents())
+
+				if isMergable {
+					color.Yellow("\tMERGE: %s%s", nprev.Contents(), color.HiYellowString("%s", n.Contents()))
+					bufMerged := append(nprev.Contents(), n.Contents()...)
+					nprev.ReplaceInContents(nprev.Contents(), bufMerged)
+					// n.ReplaceInContents(n.Contents(), nil)
+					n.delete()
+					return
+				}
 			}
 
-			if nprev != nil && n.StylesString() == nprev.StylesString() {
-				color.Yellow("\tMERGE: %s%s", nprev.Contents(), color.HiYellowString("%s", n.Contents()))
-				bufMerged := append(nprev.Contents(), n.Contents()...)
-				nprev.ReplaceInContents(nprev.Contents(), bufMerged)
-				n.ReplaceInContents(n.Contents(), nil)
-
-				return
-			}
-			fmt.Printf("\n\n")
 			nprev = n
 		})
 
