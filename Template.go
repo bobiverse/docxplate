@@ -9,7 +9,6 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
-	"strings"
 
 	"github.com/fatih/color"
 )
@@ -114,19 +113,16 @@ func (t *Template) replaceRowParams(xnode *xmlNode) {
 			if p.Params == nil {
 				return
 			}
-
 			// Do not check in nrow.Contents()
 			// because it's checks merged nodes plaintext
 			// But replacer works on every node separately
 			isValidKey := nrow.AnyChildContains([]byte(p.Placeholder()))
 			isValidKey = isValidKey || nrow.AnyChildContains([]byte(p.PlaceholderKey()))
 			// isValidKey = isValidKey || nrow.AnyChildContains([]byte(p.PlaceholderMultiple()))
-
 			if !isValidKey {
 				// specific placeholder not found
 				return
 			}
-
 			// Add new xml nodes for every param sub-param
 			for _, p2 := range p.Params {
 				color.Blue("%30s = %v", p.Placeholder(), p2.Value)
@@ -136,7 +132,6 @@ func (t *Template) replaceRowParams(xnode *xmlNode) {
 					nnew.Content = bytes.Replace(nnew.Content, []byte(p.PlaceholderKey()), []byte(p2.Key), -1)
 				})
 			}
-
 			// Remove original row which contains placeholder
 			nrow.delete()
 		})
@@ -149,21 +144,24 @@ func (t *Template) replaceRowParams(xnode *xmlNode) {
 // {{Numbers ,}}
 func (t *Template) replaceColumnParams(xnode *xmlNode) {
 	xnode.Walk(func(n *xmlNode) {
-		if bytes.Index(n.Content, []byte("{{")) >= 0 {
-			for _, p := range t.params {
+		contents := n.Contents()
+		if !bytes.Contains(contents, []byte("{{")) {
+			// without any params
+			return
+		}
 
-				pholder := []byte("{{" + p.Key + " ") //space at the end
+		t.params.Walk(func(p *Param) {
+			if p.Params == nil {
+				return
+			}
 
-				vtype := fmt.Sprintf("%T", p.Value)
-				isSlice := strings.HasPrefix(vtype, "[]")
-				isMap := strings.HasPrefix(vtype, "map[")
-				if !isSlice && !isMap {
-					// slices and maps are allowed
-					continue
-				}
+			placeholders := []string{
+				p.PlaceholderInline(),    // "{{Key " - one side brackets
+				p.PlaceholderKeyInline(), // "{{#Key "
+			}
 
-				// with space {{Placeholder ,}}, {{Placeholder , }}
-				if !bytes.Contains(n.Content, pholder) {
+			for _, pholder := range placeholders {
+				if !n.AnyChildContains([]byte(pholder)) {
 					// specific placeholder not found
 					continue
 				}
@@ -171,29 +169,77 @@ func (t *Template) replaceColumnParams(xnode *xmlNode) {
 				// Separator is last part of placeholder after space
 				// {{Numbers ,}} --> ","
 				// {{Numbers  , }} --> " , " // spaces around
-				var sep []byte
-				arr := bytes.SplitN(n.Content, pholder, 2) // aaaa {{Numbers ,}} bbb
+				var sep string
+				arr := bytes.SplitN(contents, []byte(pholder), 2) // aaaa {{Numbers ,}} bbb
 				if len(arr) == 2 {
 					arr = bytes.SplitN(arr[1], []byte("}}"), 2) // ,}} bbb
-					sep = arr[0]                                // ,
+					sep = string(arr[0])                        //,
 				}
 				color.Blue("SEP[%s]", sep)
 
-				placeholder := fmt.Sprintf("{{%s %s}}", p.Key, sep) // {{Placeholder}}
+				// Contructed full placeholder with both side brackets - {{Key , }}
+				placeholder := fmt.Sprintf("{{%s %s}}", p.Key, sep) // {{Placeholder sep}}
 
-				// interface{} to string slice
-				values := toMap(p.Value)
-				color.HiCyan("\t{{%s}}: %v", p.Key, values)
+				for _, p2 := range p.Params {
+					color.Blue("INLINE: %s = %s + %s", p.Placeholder(), placeholder, sep)
 
-				for _, val := range values {
-					sval := fmt.Sprintf("%v%s", val, sep) // interface{} to string
-					n.Content = bytes.Replace(n.Content, []byte(placeholder), []byte(sval+placeholder), -1)
+					n.Walk(func(n *xmlNode) {
+						// Replace with new value and add same placeholder at the end
+						// so we can replace next param
+						n.Content = bytes.Replace(n.Content, []byte(placeholder), []byte(p2.Value+sep+placeholder), -1)
+					})
 				}
-				n.Content = bytes.Replace(n.Content, []byte(string(sep)+placeholder), nil, 1)
-				// n.Content = bytes.Replace(n.Content, []byte(placeholder), nil, 1)
+				// Remove placeholder so nobody replaces again this
+				n.Walk(func(n *xmlNode) {
+					n.Content = bytes.Replace(n.Content, []byte(sep+placeholder), nil, -1)
+				})
 
 			}
-		}
+
+		})
+		// for _, p := range t.params {
+		//
+		// 	pholder := []byte("{{" + p.Key + " ") //space at the end
+		//
+		// 	vtype := fmt.Sprintf("%T", p.Value)
+		// 	isSlice := strings.HasPrefix(vtype, "[]")
+		// 	isMap := strings.HasPrefix(vtype, "map[")
+		// 	if !isSlice && !isMap {
+		// 		// slices and maps are allowed
+		// 		continue
+		// 	}
+		//
+		// 	// with space {{Placeholder ,}}, {{Placeholder , }}
+		// 	if !bytes.Contains(n.Content, pholder) {
+		// 		// specific placeholder not found
+		// 		continue
+		// 	}
+		//
+		// 	// Separator is last part of placeholder after space
+		// 	// {{Numbers ,}} --> ","
+		// 	// {{Numbers  , }} --> " , " // spaces around
+		// 	var sep []byte
+		// 	arr := bytes.SplitN(n.Content, pholder, 2) // aaaa {{Numbers ,}} bbb
+		// 	if len(arr) == 2 {
+		// 		arr = bytes.SplitN(arr[1], []byte("}}"), 2) // ,}} bbb
+		// 		sep = arr[0]                                // ,
+		// 	}
+		// 	color.Blue("SEP[%s]", sep)
+		//
+		// 	placeholder := fmt.Sprintf("{{%s %s}}", p.Key, sep) // {{Placeholder}}
+		//
+		// 	// interface{} to string slice
+		// 	values := toMap(p.Value)
+		// 	color.HiCyan("\t{{%s}}: %v", p.Key, values)
+		//
+		// 	for _, val := range values {
+		// 		sval := fmt.Sprintf("%v%s", val, sep) // interface{} to string
+		// 		n.Content = bytes.Replace(n.Content, []byte(placeholder), []byte(sval+placeholder), -1)
+		// 	}
+		// 	n.Content = bytes.Replace(n.Content, []byte(string(sep)+placeholder), nil, 1)
+		// 	// n.Content = bytes.Replace(n.Content, []byte(placeholder), nil, 1)
+		//
+		// }
 	})
 }
 func (t *Template) replaceSingleParams(xnode *xmlNode) {
@@ -221,7 +267,7 @@ func (t *Template) Params(v interface{}) {
 	t.mergeSimilarNodes(xnode)
 
 	t.replaceRowParams(xnode)
-	// t.replaceColumnParams(xnode)
+	t.replaceColumnParams(xnode)
 	t.replaceSingleParams(xnode)
 
 	for _, p := range t.params {

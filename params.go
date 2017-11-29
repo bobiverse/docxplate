@@ -42,19 +42,24 @@ func (p *Param) SetValue(val interface{}) {
 
 }
 
-// Placeholder ..
+// Placeholder .. {{Key}}
 func (p *Param) Placeholder() string {
 	return "{{" + p.AbsoluteKey + "}}"
 }
 
-// PlaceholderKey ..
+// PlaceholderKey .. {{#Key}}
 func (p *Param) PlaceholderKey() string {
 	return "{{#" + p.AbsoluteKey + "}}"
 }
 
-// PlaceholderMultiple ..
-func (p *Param) PlaceholderMultiple() string {
-	return "{{#" + p.AbsoluteKey + "."
+// PlaceholderInline .. {{Key ,}}
+func (p *Param) PlaceholderInline() string {
+	return "{{" + p.AbsoluteKey + " " // "{{Key " - space suffix
+}
+
+// PlaceholderKeyInline .. {{#Key ,}}
+func (p *Param) PlaceholderKeyInline() string {
+	return "{{#" + p.AbsoluteKey + " " // "{{#Key " - space suffix
 }
 
 // StructParams - load params from given any struct
