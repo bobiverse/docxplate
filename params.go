@@ -121,7 +121,9 @@ func sliceToParams(arr []interface{}) ParamList {
 	var params ParamList
 
 	for i, val := range arr {
-		p := NewParam(i)
+		// Use index +1 because in template for user not useful see
+		// 0 as start number. Only programmers will understand
+		p := NewParam(i + 1)
 
 		switch v := val.(type) {
 		case map[string]interface{}:

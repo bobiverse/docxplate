@@ -115,13 +115,12 @@ func (t *Template) replaceRowParams(xnode *xmlNode) {
 				return
 			}
 
-			// isValidKey := bytes.Contains(contents, []byte(p.Placeholder()))                 // {{Name}} --> John
-			// isValidKey = isValidKey || bytes.Contains(contents, []byte(p.PlaceholderKey())) // {{#Name}} --> 0
-			// isValidKey = isValidKey || bytes.Contains(contents, []byte(p.PlaceholderMultiple())) // {{Name.FirstLetter}} --> J
-
+			// Do not check in nrow.Contents()
+			// because it's checks merged nodes plaintext
+			// But replacer works on every node separately
 			isValidKey := nrow.AnyChildContains([]byte(p.Placeholder()))
 			isValidKey = isValidKey || nrow.AnyChildContains([]byte(p.PlaceholderKey()))
-			isValidKey = isValidKey || nrow.AnyChildContains([]byte(p.PlaceholderMultiple()))
+			// isValidKey = isValidKey || nrow.AnyChildContains([]byte(p.PlaceholderMultiple()))
 
 			if !isValidKey {
 				// specific placeholder not found
@@ -133,14 +132,8 @@ func (t *Template) replaceRowParams(xnode *xmlNode) {
 				color.Blue("%30s = %v", p.Placeholder(), p2.Value)
 				nnew := nrow.cloneAndAppend()
 				nnew.Walk(func(nnew *xmlNode) {
-					color.HiBlue("\t%30s = %s", p.Placeholder(), nnew.Content)
-
-					// oldContent := nnew.Content
 					nnew.Content = bytes.Replace(nnew.Content, []byte(p.Placeholder()), []byte(p2.Value), -1)
 					nnew.Content = bytes.Replace(nnew.Content, []byte(p.PlaceholderKey()), []byte(p2.Key), -1)
-					// if bytes.Equal(oldContent, nnew.Content) {
-					// 	nnew.Content = []byte("xxx")
-					// }
 				})
 			}
 
@@ -210,6 +203,7 @@ func (t *Template) replaceSingleParams(xnode *xmlNode) {
 			t.params.Walk(func(p *Param) {
 				// color.Blue("%30s --> %+v", p.Placeholder(), p.Value)
 				n.Content = bytes.Replace(n.Content, []byte(p.Placeholder()), []byte(p.Value), -1)
+				n.Content = bytes.Replace(n.Content, []byte(p.PlaceholderKey()), []byte(p.Key), -1)
 			})
 		}
 	})
@@ -228,7 +222,7 @@ func (t *Template) Params(v interface{}) {
 
 	t.replaceRowParams(xnode)
 	// t.replaceColumnParams(xnode)
-	// t.replaceSingleParams(xnode)
+	t.replaceSingleParams(xnode)
 
 	for _, p := range t.params {
 		color.Green("|| %-20s %v", p.Key, p.Value)
