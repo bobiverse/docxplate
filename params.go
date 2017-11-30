@@ -3,18 +3,23 @@ package docxplate
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/fatih/color"
 )
 
 // Param ..
 type Param struct {
-	Key    string
-	Value  string
-	Params ParamList
+	Key   string
+	Value string
 
-	parent      *Param
-	AbsoluteKey string
+	IsSlice bool // mark param created from slice
+	Params  ParamList
+
+	parent *Param
+
+	AbsoluteKey string // Users.1.Name
+	CompactKey  string // Users.Name
 }
 
 // ParamList ..
@@ -28,6 +33,7 @@ func NewParam(key interface{}) *Param {
 		Key: fmt.Sprintf("%v", key),
 	}
 	p.AbsoluteKey = p.Key
+	p.CompactKey = p.Key
 	return p
 }
 
@@ -62,6 +68,12 @@ func (p *Param) PlaceholderKeyInline() string {
 	return "{{#" + p.AbsoluteKey + " " // "{{#Key " - space suffix
 }
 
+// ToCompact - convert AbsoluteKey placeholder to ComplexKey placeholder
+// {{Users.0.Name}} --> {{Users.Name}}
+func (p *Param) ToCompact(placeholder string) string {
+	return strings.Replace(placeholder, p.AbsoluteKey, p.CompactKey, 1)
+}
+
 // StructParams - load params from given any struct
 // 1) Convert struct to JSON
 // 2) Now convert JSON to map[string]interface{}
@@ -77,6 +89,9 @@ func StructParams(v interface{}) ParamList {
 
 	// to filtered/clean map
 	params := mapToParams(m)
+	params.Walk(func(p *Param) {
+		// use Walk func built-in logic to assign keys
+	})
 
 	// DEBUG:
 	dbg, _ := json.MarshalIndent(params, "", "\t")
@@ -106,6 +121,7 @@ func mapToParams(m map[string]interface{}) ParamList {
 		case map[string]interface{}:
 			p.Params = mapToParams(v)
 		case []interface{}:
+			p.IsSlice = true
 			p.Params = sliceToParams(v)
 		default:
 			p.SetValue(mVal)
@@ -161,62 +177,31 @@ func (p *Param) Walk(fn func(*Param)) {
 			continue
 		}
 
+		// Assign parent
 		p2.parent = p
+
+		// Absolute key with slice indexes
 		p2.AbsoluteKey = p.AbsoluteKey + "." + p2.Key
 		if p.AbsoluteKey == "" {
 			p2.AbsoluteKey = p.Key + "." + p2.Key
+
 		}
+
+		// Complex key with no slice indexes
+		if p2.parent.IsSlice {
+			p2.CompactKey = p.Key
+		} else {
+			p2.CompactKey = p.CompactKey + "." + p2.Key
+		}
+
 		fn(p2)
 
 		p2.Walk(fn)
 	}
 }
 
-// // Make map of available params from interface{}
-// func collectParams(parentPrefix string, v interface{}) map[string]interface{} {
-// 	m := map[string]interface{}{}
-//
-// 	rval := reflect.ValueOf(v)
-// 	rind := reflect.Indirect(rval)
-// 	rtype := rind.Type()
-// 	for i := 0; i < rval.NumField(); i++ {
-// 		fval := rind.Field(i)
-// 		fname := rtype.Field(i).Name
-//
-// 		// pointer
-// 		if fval.Kind() == reflect.Ptr {
-// 			fval = fval.Elem()
-// 		}
-//
-// 		color.Blue("%T -- %-10s %-10s %#v=%+v", fval, fval.Type(), fval.Kind(), fname, fval)
-//
-// 		// First assign any
-// 		m[parentPrefix+fname] = fval.Interface()
-// 		if !strings.Contains(fval.Type().String(), "main.") {
-// 			// Simple slices (without []main.X or []*main.X ) leave as is
-// 			continue
-// 		}
-//
-// 		var m2 map[string]interface{}
-//
-// 		// modify by specific kind
-// 		kind := fval.Kind()
-// 		switch kind {
-// 		case reflect.Slice:
-// 			// m[fname] = color.RedString("-- TODO: %s --", kind.String())
-// 			// m2 = collectParams(fname+".", fval[0].Interface())
-// 		case reflect.Struct:
-// 			m2 = collectParams(fname+".", fval.Interface())
-// 		}
-//
-// 		if len(m2) > 0 {
-// 			for k, v := range m2 {
-// 				m[k] = v
-// 			}
-// 			delete(m, fname)
-// 		}
-//
-// 	}
-//
-// 	return m
-// }
+// Depth - how many levels param have of child nodes
+// {{Users.1.Name}} --> 3
+func (p *Param) Depth() int {
+	return strings.Count(p.Placeholder(), ".") + 1
+}

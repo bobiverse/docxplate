@@ -80,6 +80,14 @@ func (xnode *xmlNode) isRowElement() bool {
 	return false
 }
 
+// HaveParams - does node contents contains any param
+func (xnode *xmlNode) HaveParams() bool {
+	buf := xnode.Contents()
+	have := bytes.Contains(buf, []byte("{{"))        // start
+	have = have && bytes.Contains(buf, []byte("}}")) // end
+	return have
+}
+
 // Does any of child holds contents
 // DIFFERENCE: xnode.Contents() returns plaintext concatenated from all childs
 // and this function checks every child node separately
@@ -124,18 +132,18 @@ func (xnode *xmlNode) index() int {
 
 // Clone and Add after this
 // return new xmlNode
-func (n *xmlNode) cloneAndAppend() *xmlNode {
-	parent := n.parent
+func (xnode *xmlNode) cloneAndAppend() *xmlNode {
+	parent := xnode.parent
 
 	// new copy node
-	nnew := n.clone()
+	nnew := xnode.clone()
 	nnew.isNew = true
 	// nnew.Walk(func(nnew *xmlNode) {
 	// 	// nnew.Content = bytes.Replace(nnew.Content, []byte("}}"), []byte(" CLONE }}"), -1)
 	// })
 
 	// Find node index in parent hierarchy and chose next index as copy place
-	i := n.index()
+	i := xnode.index()
 	if i == -1 {
 		// Return existing instance to avoid nil errors
 		// But this node not added to xml structure list, so dissapears in output
@@ -169,6 +177,12 @@ func (xnode *xmlNode) clone() *xmlNode {
 
 // Delete node
 func (xnode *xmlNode) delete() {
+	// clear contents first
+	xnode.Walk(func(nrow *xmlNode) {
+		xnode.Content = nil
+	})
+
+	// remove from list
 	index := xnode.index()
 	if index != -1 {
 		xnode.parent.Nodes[index] = nil

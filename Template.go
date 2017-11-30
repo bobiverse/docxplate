@@ -91,26 +91,131 @@ func (t *Template) fileToXMLStruct(fname string) *xmlNode {
 	return xnode
 }
 
+// Expand some placeholders to enable row replacer replace them
+// Users: []User{ User{Name:AAA}, User{Name:BBB} }
+// {{Users.Name}} -->
+//      {{Users.1.Name}}
+//      {{Users.2.Name}}
+func (t *Template) expandPlaceholders(xnode *xmlNode) {
+
+	t.params.Walk(func(p *Param) {
+		if p.Depth() < 3 {
+			return
+		}
+
+		// placeholder := p.ToCompact(p.Placeholder())
+		placeholderPrefix := "{{" + p.parent.CompactKey + "."
+
+		// walk xml nodes find what to clone and change
+		xnode.Walk(func(nrow *xmlNode) {
+			if nrow.isNew {
+				return
+			}
+			if !nrow.isRowElement() || !nrow.HaveParams() {
+				return
+			}
+			if p.Params == nil {
+				return
+			}
+			if !nrow.AnyChildContains([]byte(placeholderPrefix)) {
+				return
+			}
+
+			// Current "p" is child of slice
+			// we need to get this child neighbors by
+			// Parent -> childrens-slice -> Children
+			// parent     .parent           .Params
+			params := p.parent.parent.Params
+
+			// color.Cyan("%-30s (%d) %s", placeholderPrefix, len(p.Params), nrow.Contents())
+
+			for _, p2 := range params {
+				// Clone for every
+				nnew := nrow.cloneAndAppend()
+				color.HiCyan("\tCLONE: %-10v %s", nrow.isNew, nrow.Contents())
+
+				for _, p3 := range p2.Params {
+					old := p3.ToCompact(p3.Placeholder())
+					new := p3.Placeholder()
+
+					color.HiCyan("\t\tREPLACE: %v %v", old, new)
+					nnew.Walk(func(nnew *xmlNode) {
+						nnew.Content = bytes.Replace(nnew.Content, []byte(old), []byte(new), -1)
+					})
+				}
+			}
+			nrow.delete()
+
+			// for _, p2 := range p.Params {
+			// color.Blue("%s %d", p.Placeholder(), len(p.Params))
+			// nrow.cloneAndAppend()
+			// nnew.Walk(func(nnew *xmlNode) {
+			// 	nnew.Content = bytes.Replace(nnew.Content, []byte(placeholder), []byte(newPlaceholder), -1)
+			// })
+			// nrow.delete()
+			// }
+		})
+
+	})
+
+	// xnode.Walk(func(nrow *xmlNode) {
+	// 	if !nrow.isRowElement() || !nrow.HaveParams() {
+	// 		return
+	// 	}
+	//
+	// 	// // Loop all params and try to replace
+	// 	// t.params.Walk(func(p *Param) {
+	// 	// 	if p.Depth() < 3 {
+	// 	// 		return
+	// 	// 	}
+	//     //
+	// 	// 	placeholder := p.ToComplex(p.Placeholder())
+	// 	// 	isValidKey := nrow.AnyChildContains([]byte(placeholder))
+	// 	// 	if !isValidKey {
+	// 	// 		return
+	// 	// 	}
+	// 	// 	params := p.parent.parent.Params
+	// 	// 	color.Blue("CX: %30s = %v", placeholder, params)
+	//     //
+	//     //
+	// 	// 	for _, p2 := range params {
+	// 	// 		newPlaceholder := strings.Replace(placeholder, p.ComplexKey, p2.AbsoluteKey+"."+p.Key, 1)
+	// 	// 		color.HiBlue("CX:\t %30s ---> %s", placeholder, newPlaceholder)
+	// 	// 		nrow.cloneAndAppend()
+	// 	// 		// nnew.Walk(func(nnew *xmlNode) {
+	// 	// 		// 	nnew.Content = bytes.Replace(nnew.Content, []byte(placeholder), []byte(newPlaceholder), -1)
+	// 	// 		// })
+	// 	// 	}
+	// 	// 	nrow.delete()
+	//     //
+	// 	// 	// Add new xml nodes for every param sub-param
+	// 	// 	// nnew := nrow.cloneAndAppend()
+	// 	// 	// nnew.Walk(func(nnew *xmlNode) {
+	// 	// 	// 	// for _, p2 := range params {
+	// 	// 	// 	// 	color.HiBlue("CX:\t %30s = %v --> %v", placeholder, p.ComplexKey, p2.AbsoluteKey+"."+p.Key)
+	// 	// 	// 	// 	newPlaceholder := strings.Replace(placeholder, p.ComplexKey, p2.AbsoluteKey+"."+p.Key, 1)
+	// 	// 	// 	// 	nnew.Content = bytes.Replace(nnew.Content, []byte(placeholder), []byte(newPlaceholder), -1)
+	// 	// 	// 	// }
+	// 	// 	// })
+	// 	// })
+	//
+	// })
+}
+
 // Row placeholders - clone row, append to existing structure and replace values
 // Numbers: []int{1,3,5}
 // {{Numbers}}
 func (t *Template) replaceRowParams(xnode *xmlNode) {
 	xnode.Walk(func(nrow *xmlNode) {
 
-		if !nrow.isRowElement() {
-			return
-		}
-
-		contents := nrow.Contents()
-
-		if !bytes.Contains(contents, []byte("{{")) {
-			// without any params
+		if !nrow.isRowElement() || !nrow.HaveParams() {
 			return
 		}
 
 		// Loop all params and try to replace
 		t.params.Walk(func(p *Param) {
 			if p.Params == nil {
+				// Allow only slice params here
 				return
 			}
 			// Do not check in nrow.Contents()
@@ -118,7 +223,7 @@ func (t *Template) replaceRowParams(xnode *xmlNode) {
 			// But replacer works on every node separately
 			isValidKey := nrow.AnyChildContains([]byte(p.Placeholder()))
 			isValidKey = isValidKey || nrow.AnyChildContains([]byte(p.PlaceholderKey()))
-			// isValidKey = isValidKey || nrow.AnyChildContains([]byte(p.PlaceholderMultiple()))
+
 			if !isValidKey {
 				// specific placeholder not found
 				return
@@ -142,13 +247,12 @@ func (t *Template) replaceRowParams(xnode *xmlNode) {
 // Inline placeholders - clone text node, append to existing structure and replace values
 // Numbers: []int{1,3,5}
 // {{Numbers ,}}
-func (t *Template) replaceColumnParams(xnode *xmlNode) {
+func (t *Template) replaceInlineParams(xnode *xmlNode) {
 	xnode.Walk(func(n *xmlNode) {
-		contents := n.Contents()
-		if !bytes.Contains(contents, []byte("{{")) {
-			// without any params
+		if !n.HaveParams() {
 			return
 		}
+		contents := n.Contents()
 
 		t.params.Walk(func(p *Param) {
 			if p.Params == nil {
@@ -175,14 +279,11 @@ func (t *Template) replaceColumnParams(xnode *xmlNode) {
 					arr = bytes.SplitN(arr[1], []byte("}}"), 2) // ,}} bbb
 					sep = string(arr[0])                        //,
 				}
-				color.Blue("SEP[%s]", sep)
 
 				// Contructed full placeholder with both side brackets - {{Key , }}
 				placeholder := fmt.Sprintf("{{%s %s}}", p.Key, sep) // {{Placeholder sep}}
 
 				for _, p2 := range p.Params {
-					color.Blue("INLINE: %s = %s + %s", p.Placeholder(), placeholder, sep)
-
 					n.Walk(func(n *xmlNode) {
 						// Replace with new value and add same placeholder at the end
 						// so we can replace next param
@@ -197,49 +298,6 @@ func (t *Template) replaceColumnParams(xnode *xmlNode) {
 			}
 
 		})
-		// for _, p := range t.params {
-		//
-		// 	pholder := []byte("{{" + p.Key + " ") //space at the end
-		//
-		// 	vtype := fmt.Sprintf("%T", p.Value)
-		// 	isSlice := strings.HasPrefix(vtype, "[]")
-		// 	isMap := strings.HasPrefix(vtype, "map[")
-		// 	if !isSlice && !isMap {
-		// 		// slices and maps are allowed
-		// 		continue
-		// 	}
-		//
-		// 	// with space {{Placeholder ,}}, {{Placeholder , }}
-		// 	if !bytes.Contains(n.Content, pholder) {
-		// 		// specific placeholder not found
-		// 		continue
-		// 	}
-		//
-		// 	// Separator is last part of placeholder after space
-		// 	// {{Numbers ,}} --> ","
-		// 	// {{Numbers  , }} --> " , " // spaces around
-		// 	var sep []byte
-		// 	arr := bytes.SplitN(n.Content, pholder, 2) // aaaa {{Numbers ,}} bbb
-		// 	if len(arr) == 2 {
-		// 		arr = bytes.SplitN(arr[1], []byte("}}"), 2) // ,}} bbb
-		// 		sep = arr[0]                                // ,
-		// 	}
-		// 	color.Blue("SEP[%s]", sep)
-		//
-		// 	placeholder := fmt.Sprintf("{{%s %s}}", p.Key, sep) // {{Placeholder}}
-		//
-		// 	// interface{} to string slice
-		// 	values := toMap(p.Value)
-		// 	color.HiCyan("\t{{%s}}: %v", p.Key, values)
-		//
-		// 	for _, val := range values {
-		// 		sval := fmt.Sprintf("%v%s", val, sep) // interface{} to string
-		// 		n.Content = bytes.Replace(n.Content, []byte(placeholder), []byte(sval+placeholder), -1)
-		// 	}
-		// 	n.Content = bytes.Replace(n.Content, []byte(string(sep)+placeholder), nil, 1)
-		// 	// n.Content = bytes.Replace(n.Content, []byte(placeholder), nil, 1)
-		//
-		// }
 	})
 }
 func (t *Template) replaceSingleParams(xnode *xmlNode) {
@@ -265,9 +323,10 @@ func (t *Template) Params(v interface{}) {
 	xnode := t.fileToXMLStruct(f.Name)
 
 	t.mergeSimilarNodes(xnode)
+	t.expandPlaceholders(xnode)
 
 	t.replaceRowParams(xnode)
-	t.replaceColumnParams(xnode)
+	t.replaceInlineParams(xnode)
 	t.replaceSingleParams(xnode)
 
 	for _, p := range t.params {
@@ -285,11 +344,9 @@ func (t *Template) Params(v interface{}) {
 // replacer process nodes one by one
 func (t *Template) mergeSimilarNodes(xnode *xmlNode) {
 	xnode.Walk(func(xnode *xmlNode) {
-		if !bytes.Contains(xnode.Contents(), []byte("{{")) {
+		if !xnode.HaveParams() {
 			return
 		}
-		// parent scope
-		// color.Yellow("%v", xnode.XMLName)
 
 		var nprev *xmlNode
 		xnode.Walk(func(n *xmlNode) {
