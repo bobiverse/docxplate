@@ -27,46 +27,37 @@ var user = User{
 	},
 }
 
-func TestStructParam(t *testing.T) {
-
-	tdoc, _ := docxplate.OpenTemplate("test-data/user.template.docx")
-	tdoc.Params(user)
-
-	plaintext := tdoc.Plaintext()
-
-	// Does non-replacable placeholders still exists
-	if !strings.Contains(plaintext, "{{NotReplacable}}") {
-		t.Errorf("Param {{NotReplacable}} be left")
-	}
-	plaintext = strings.Replace(plaintext, "{{NotReplacable}}", "", -1)
-
-	// All valid params replaced
-	leftParams := strings.Contains(plaintext, "{{")
-	leftParams = leftParams && strings.Contains(plaintext, "}}")
-	if leftParams {
-		t.Errorf("Some params not replaced: \n\n%s", plaintext)
+func TestParamsReplace(t *testing.T) {
+	inputs := []string{
+		"struct",
+		"json",
 	}
 
-}
+	// Test param setup byu different input types
+	for _, inType := range inputs {
+		tdoc, _ := docxplate.OpenTemplate("test-data/user.template.docx")
+		switch inType {
+		case "struct":
+			buf, _ := json.Marshal(user)
+			tdoc.Params(buf)
+		case "json":
+			tdoc.Params(user)
+		}
 
-func TestJSONParam(t *testing.T) {
-	tdoc, _ := docxplate.OpenTemplate("test-data/user.template.docx")
-	buf, _ := json.Marshal(user)
-	tdoc.Params(buf)
+		plaintext := tdoc.Plaintext()
 
-	plaintext := tdoc.Plaintext()
+		// Does non-replacable placeholders still exists
+		if !strings.Contains(plaintext, "{{NotReplacable}}") {
+			t.Errorf("Param {{NotReplacable}} be left")
+		}
+		plaintext = strings.Replace(plaintext, "{{NotReplacable}}", "", -1)
 
-	// Does non-replacable placeholders still exists
-	if !strings.Contains(plaintext, "{{NotReplacable}}") {
-		t.Errorf("Param {{NotReplacable}} be left")
-	}
-	plaintext = strings.Replace(plaintext, "{{NotReplacable}}", "", -1)
-
-	// All valid params replaced
-	leftParams := strings.Contains(plaintext, "{{")
-	leftParams = leftParams && strings.Contains(plaintext, "}}")
-	if leftParams {
-		t.Errorf("Some params not replaced: \n\n%s", plaintext)
+		// All valid params replaced
+		leftParams := strings.Contains(plaintext, "{{")
+		leftParams = leftParams && strings.Contains(plaintext, "}}")
+		if leftParams {
+			t.Errorf("Some params not replaced: \n\n%s", plaintext)
+		}
 	}
 
 }
