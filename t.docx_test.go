@@ -43,6 +43,7 @@ func TestParamsReplace(t *testing.T) {
 		case "json":
 			tdoc.Params(user)
 		}
+		tdoc.ExportDocx("/home/briic/Desktop/TEST.docx")
 
 		plaintext := tdoc.Plaintext()
 
