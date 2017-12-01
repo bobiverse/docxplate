@@ -6,9 +6,10 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"os"
+	"regexp"
+	"strings"
 
 	"github.com/fatih/color"
 )
@@ -96,110 +97,58 @@ func (t *Template) fileToXMLStruct(fname string) *xmlNode {
 // {{Users.Name}} -->
 //      {{Users.1.Name}}
 //      {{Users.2.Name}}
-func (t *Template) expandPlaceholders(xnode *xmlNode) {
 
+func (t *Template) expandPlaceholders(xnode *xmlNode) {
 	t.params.Walk(func(p *Param) {
-		if p.Depth() < 3 {
+		if !p.IsSlice {
 			return
 		}
 
-		// placeholder := p.ToCompact(p.Placeholder())
-		placeholderPrefix := "{{" + p.parent.CompactKey + "."
+		prefixes := []string{
+			p.PlaceholderPrefix(),
+			p.ToCompact(p.PlaceholderPrefix()),
+		}
 
-		// walk xml nodes find what to clone and change
-		xnode.Walk(func(nrow *xmlNode) {
-			if nrow.isNew {
-				return
-			}
-			if !nrow.isRowElement() || !nrow.HaveParams() {
-				return
-			}
-			if p.Params == nil {
-				return
-			}
-			if !nrow.AnyChildContains([]byte(placeholderPrefix)) {
-				return
-			}
+		for _, prefix := range prefixes {
+			xnode.Walk(func(nrow *xmlNode) {
+				if nrow.isNew {
+					return
+				}
+				if !nrow.isRowElement() {
+					return
+				}
+				if !nrow.AnyChildContains([]byte(prefix)) {
+					return
+				}
+				// color.Blue("%-30s - %s", prefix, nrow.Contents())
 
-			// Current "p" is child of slice
-			// we need to get this child neighbors by
-			// Parent -> childrens-slice -> Children
-			// parent     .parent           .Params
-			params := p.parent.parent.Params
-
-			// color.Cyan("%-30s (%d) %s", placeholderPrefix, len(p.Params), nrow.Contents())
-
-			for _, p2 := range params {
-				// Clone for every
-				nnew := nrow.cloneAndAppend()
-				color.HiCyan("\tCLONE: %-10v %s", nrow.isNew, nrow.Contents())
-
-				for _, p3 := range p2.Params {
-					old := p3.ToCompact(p3.Placeholder())
-					new := p3.Placeholder()
-
-					color.HiCyan("\t\tREPLACE: %v %v", old, new)
-					nnew.Walk(func(nnew *xmlNode) {
-						nnew.Content = bytes.Replace(nnew.Content, []byte(old), []byte(new), -1)
+				// color.Cyan("\tCLONE: %s", nrow.Contents())
+				for _, p2 := range p.Params {
+					nnew := nrow.cloneAndAppend()
+					// color.Cyan("\tCLONE: %s", p2.AbsoluteKey)
+					nnew.Walk(func(n *xmlNode) {
+						pattern := strings.Replace(prefix, ".", "\\.", -1)
+						pattern += `\d` // is already have some index number at the end
+						if isMatch, _ := regexp.Match(pattern, n.Content); isMatch {
+							// color.Red("SKIP: %s", n.Content)
+							return
+						}
+						n.Content = bytes.Replace(n.Content, []byte(prefix), []byte(p2.PlaceholderPrefix()), -1)
 					})
 				}
-			}
-			nrow.delete()
+				nrow.delete()
+			})
+		}
 
-			// for _, p2 := range p.Params {
-			// color.Blue("%s %d", p.Placeholder(), len(p.Params))
-			// nrow.cloneAndAppend()
-			// nnew.Walk(func(nnew *xmlNode) {
-			// 	nnew.Content = bytes.Replace(nnew.Content, []byte(placeholder), []byte(newPlaceholder), -1)
-			// })
-			// nrow.delete()
-			// }
-		})
-
+		// }
+		// fmt.Printf("\n")
 	})
 
-	// xnode.Walk(func(nrow *xmlNode) {
-	// 	if !nrow.isRowElement() || !nrow.HaveParams() {
-	// 		return
-	// 	}
-	//
-	// 	// // Loop all params and try to replace
-	// 	// t.params.Walk(func(p *Param) {
-	// 	// 	if p.Depth() < 3 {
-	// 	// 		return
-	// 	// 	}
-	//     //
-	// 	// 	placeholder := p.ToComplex(p.Placeholder())
-	// 	// 	isValidKey := nrow.AnyChildContains([]byte(placeholder))
-	// 	// 	if !isValidKey {
-	// 	// 		return
-	// 	// 	}
-	// 	// 	params := p.parent.parent.Params
-	// 	// 	color.Blue("CX: %30s = %v", placeholder, params)
-	//     //
-	//     //
-	// 	// 	for _, p2 := range params {
-	// 	// 		newPlaceholder := strings.Replace(placeholder, p.ComplexKey, p2.AbsoluteKey+"."+p.Key, 1)
-	// 	// 		color.HiBlue("CX:\t %30s ---> %s", placeholder, newPlaceholder)
-	// 	// 		nrow.cloneAndAppend()
-	// 	// 		// nnew.Walk(func(nnew *xmlNode) {
-	// 	// 		// 	nnew.Content = bytes.Replace(nnew.Content, []byte(placeholder), []byte(newPlaceholder), -1)
-	// 	// 		// })
-	// 	// 	}
-	// 	// 	nrow.delete()
-	//     //
-	// 	// 	// Add new xml nodes for every param sub-param
-	// 	// 	// nnew := nrow.cloneAndAppend()
-	// 	// 	// nnew.Walk(func(nnew *xmlNode) {
-	// 	// 	// 	// for _, p2 := range params {
-	// 	// 	// 	// 	color.HiBlue("CX:\t %30s = %v --> %v", placeholder, p.ComplexKey, p2.AbsoluteKey+"."+p.Key)
-	// 	// 	// 	// 	newPlaceholder := strings.Replace(placeholder, p.ComplexKey, p2.AbsoluteKey+"."+p.Key, 1)
-	// 	// 	// 	// 	nnew.Content = bytes.Replace(nnew.Content, []byte(placeholder), []byte(newPlaceholder), -1)
-	// 	// 	// 	// }
-	// 	// 	// })
-	// 	// })
-	//
-	// })
+	// Cloned nodes are marked as new by default.
+	// After expanding mark as old so next operations doesn't ignore them
+	xnode.Walk(func(n *xmlNode) {
+		n.isNew = false
+	})
 }
 
 // Row placeholders - clone row, append to existing structure and replace values
@@ -230,7 +179,7 @@ func (t *Template) replaceRowParams(xnode *xmlNode) {
 			}
 			// Add new xml nodes for every param sub-param
 			for _, p2 := range p.Params {
-				color.Blue("%30s = %v", p.Placeholder(), p2.Value)
+				// color.Blue("%30s = %v", p.Placeholder(), p2.Value)
 				nnew := nrow.cloneAndAppend()
 				nnew.Walk(func(nnew *xmlNode) {
 					nnew.Content = bytes.Replace(nnew.Content, []byte(p.Placeholder()), []byte(p2.Value), -1)
@@ -322,16 +271,23 @@ func (t *Template) Params(v interface{}) {
 	f := t.MainDocument() // TODO: loop all xml files
 	xnode := t.fileToXMLStruct(f.Name)
 
+	// While formating docx sometimes same style node is split to
+	// multiple same style nodes and different content
+	// Merge them so placeholders are in the same node
 	t.mergeSimilarNodes(xnode)
+
+	// Complex placeholders with more depth needs to be expanded
+	// for correct replace
 	t.expandPlaceholders(xnode)
 
 	t.replaceRowParams(xnode)
 	t.replaceInlineParams(xnode)
 	t.replaceSingleParams(xnode)
 
-	for _, p := range t.params {
-		color.Green("|| %-20s %v", p.Key, p.Value)
-	}
+	// // DEBUG:
+	// for _, p := range t.params {
+	// 	color.Green("|| %-20s %v", p.Key, p.Value)
+	// }
 
 	// Save []bytes
 	t.modified[f.Name] = structToXMLBytes(xnode)
@@ -368,10 +324,9 @@ func (t *Template) mergeSimilarNodes(xnode *xmlNode) {
 				// color.HiCyan("\tM2: Parent:%p %s", n.parent, n.Contents())
 
 				if isMergable {
-					color.Yellow("\tMERGE: %s%s", nprev.Contents(), color.HiYellowString("%s", n.Contents()))
+					// color.Yellow("\tMERGE: %s%s", nprev.Contents(), color.HiYellowString("%s", n.Contents()))
 					bufMerged := append(nprev.Contents(), n.Contents()...)
 					nprev.ReplaceInContents(nprev.Contents(), bufMerged)
-					// n.ReplaceInContents(n.Contents(), nil)
 					n.delete()
 					return
 				}
@@ -417,16 +372,9 @@ func (t *Template) ExportDocx(path string) {
 
 		// Move/Write struct-saved file to docx archive file back
 		if buf, isModified := t.modified[f.Name]; isModified {
-
-			// // // file to XML nodes struct
-			// xmlNodes := t.fileToXMLStruct(f.Name)
-			// buf := structToXMLBytes(xmlNodes)
-
-			// head := []byte(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` + "\n")
-			// buf = append(head, buf...)
 			fw.Write(buf)
-
-			ioutil.WriteFile("XXX.xml", buf, 0666) // DEBUG
+			// // DEBUG:
+			// ioutil.WriteFile("XXX.xml", buf, 0666)
 			continue
 		}
 
