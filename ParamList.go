@@ -16,6 +16,11 @@ func StructParams(v interface{}) ParamList {
 	buf, _ := json.MarshalIndent(v, "", "\t")
 	// color.Magenta("StructParams: %s\n", buf)
 
+	return JSONToParams(buf)
+}
+
+// JSONToParams - load params from JSON
+func JSONToParams(buf []byte) ParamList {
 	// to map
 	m := map[string]interface{}{}
 	json.Unmarshal(buf, &m)

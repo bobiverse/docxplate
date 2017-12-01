@@ -1,6 +1,7 @@
 package docxplate_test
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -26,11 +27,32 @@ var user = User{
 	},
 }
 
-func TestDocxFull(t *testing.T) {
+func TestStructParam(t *testing.T) {
 
 	tdoc, _ := docxplate.OpenTemplate("test-data/user.template.docx")
 	tdoc.Params(user)
-	// tdoc.ExportDocx("TEST.docx")
+
+	plaintext := tdoc.Plaintext()
+
+	// Does non-replacable placeholders still exists
+	if !strings.Contains(plaintext, "{{NotReplacable}}") {
+		t.Errorf("Param {{NotReplacable}} be left")
+	}
+	plaintext = strings.Replace(plaintext, "{{NotReplacable}}", "", -1)
+
+	// All valid params replaced
+	leftParams := strings.Contains(plaintext, "{{")
+	leftParams = leftParams && strings.Contains(plaintext, "}}")
+	if leftParams {
+		t.Errorf("Some params not replaced: \n\n%s", plaintext)
+	}
+
+}
+
+func TestJSONParam(t *testing.T) {
+	tdoc, _ := docxplate.OpenTemplate("test-data/user.template.docx")
+	buf, _ := json.Marshal(user)
+	tdoc.Params(buf)
 
 	plaintext := tdoc.Plaintext()
 

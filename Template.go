@@ -274,7 +274,14 @@ func (t *Template) replaceSingleParams(xnode *xmlNode) {
 // "Hello {{ Name }}!"" --> "Hello World!""
 func (t *Template) Params(v interface{}) {
 	// t.params = collectParams("", v)
-	t.params = StructParams(v)
+	switch val := v.(type) {
+	case string:
+		t.params = JSONToParams([]byte(val))
+	case []byte:
+		t.params = JSONToParams(val)
+	default:
+		t.params = StructParams(val)
+	}
 
 	f := t.MainDocument() // TODO: loop all xml files
 	xnode := t.fileToXMLStruct(f.Name)
