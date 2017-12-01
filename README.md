@@ -2,6 +2,7 @@
 Generate document from .docx template file.  
 (!) **Unstable with complex/many levels Structs.**
 
+[/images/preview.png](/images/preview.png)
 ![docxplate preview](./images/preview.png)
 
 
