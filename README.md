@@ -2,11 +2,10 @@
 Generate document from .docx template file.  
 (!) **Unstable with complex/many levels Structs.**
 
-[/images/preview.png](/images/preview.png)
-![docxplate preview](./images/preview.png)
-
-
 ## Examples
+*Click on image to see larger.*
+[![docxplate preview](./images/preview.png)](/images/preview.png)
+
 
     // Using this data for all examples below
     type User struct {
