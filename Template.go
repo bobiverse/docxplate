@@ -61,16 +61,8 @@ func (t *Template) MainDocument() *zip.File {
 	return fxml
 }
 
-// Convert given file (from template.Files) to struct of xml nodes
-func (t *Template) fileToXMLStruct(fname string) *xmlNode {
-	f, ok := t.files[fname]
-	if !ok {
-		return nil
-	}
-
-	fr, _ := f.Open()
-	buf := readerBytes(fr)
-
+// Convert given bytes to struct of xml nodes
+func (t *Template) bytesToXMLStruct(buf []byte) *xmlNode {
 	// Do not strip <w: entiraly, but keep reference as w-t
 	// So any string without w: would stay same, but all w- will be replaced again
 	buf = bytes.Replace(buf, []byte("<w:"), []byte("<w-"), -1)
@@ -90,6 +82,19 @@ func (t *Template) fileToXMLStruct(fname string) *xmlNode {
 
 	// color.Cyan("%s", structToXMLBytes(n))
 	return xnode
+}
+
+// Convert given file (from template.Files) to struct of xml nodes
+func (t *Template) fileToXMLStruct(fname string) *xmlNode {
+	f, ok := t.files[fname]
+	if !ok {
+		return nil
+	}
+
+	fr, _ := f.Open()
+	buf := readerBytes(fr)
+
+	return t.bytesToXMLStruct(buf)
 }
 
 // Expand some placeholders to enable row replacer replace them
@@ -120,12 +125,11 @@ func (t *Template) expandPlaceholders(xnode *xmlNode) {
 				if !nrow.AnyChildContains([]byte(prefix)) {
 					return
 				}
-				// color.Blue("%-30s - %s", prefix, nrow.Contents())
 
-				// color.Cyan("\tCLONE: %s", nrow.Contents())
+				// color.Blue("%-30s - %s", prefix, nrow.Contents())
 				for _, p2 := range p.Params {
+					// color.Cyan("\tCLONE: %s -- %s -- %s", prefix+p2.Key, p2.PlaceholderPrefix(), nrow.Contents())
 					nnew := nrow.cloneAndAppend()
-					// color.Cyan("\tCLONE: %s", p2.AbsoluteKey)
 					nnew.Walk(func(n *xmlNode) {
 						pattern := strings.Replace(prefix, ".", "\\.", -1)
 						pattern += `\d` // is already have some index number at the end
@@ -254,6 +258,10 @@ func (t *Template) replaceSingleParams(xnode *xmlNode) {
 		if bytes.Index(n.Content, []byte("{{")) >= 0 {
 			// Try to replace on node that contains possible placeholder
 			t.params.Walk(func(p *Param) {
+				if p.IsSlice {
+					// do not replace slice/map values here. Only singles
+					return
+				}
 				// color.Blue("%30s --> %+v", p.Placeholder(), p.Value)
 				n.Content = bytes.Replace(n.Content, []byte(p.Placeholder()), []byte(p.Value), -1)
 				n.Content = bytes.Replace(n.Content, []byte(p.PlaceholderKey()), []byte(p.Key), -1)
@@ -275,6 +283,10 @@ func (t *Template) Params(v interface{}) {
 	// multiple same style nodes and different content
 	// Merge them so placeholders are in the same node
 	t.mergeSimilarNodes(xnode)
+
+	// First try to replace all exact-match placeholders
+	// Do it before expand because it may expand unwanted placeholders
+	t.replaceSingleParams(xnode)
 
 	// Complex placeholders with more depth needs to be expanded
 	// for correct replace
@@ -339,10 +351,10 @@ func (t *Template) mergeSimilarNodes(xnode *xmlNode) {
 }
 
 // ExportDocx - save new/modified docx based on template
-func (t *Template) ExportDocx(path string) {
+func (t *Template) ExportDocx(path string) error {
 	fDocx, err := os.Create(path)
 	if err != nil {
-		return
+		return err
 	}
 	defer fDocx.Close()
 
@@ -351,7 +363,6 @@ func (t *Template) ExportDocx(path string) {
 
 	// Loop existing files to build docx archive again
 	for _, f := range t.files {
-		var err error
 
 		// Read contents of single file inside zip
 		var fr io.ReadCloser
@@ -381,5 +392,27 @@ func (t *Template) ExportDocx(path string) {
 		fw.Write(fbuf.Bytes())
 	}
 
-	return
+	return err
+}
+
+// Plaintext - return as plaintext
+func (t *Template) Plaintext() string {
+	plaintext := ""
+
+	f := t.MainDocument() // TODO: loop all xml files
+	xnode := t.bytesToXMLStruct(t.modified[f.Name])
+
+	xnode.Walk(func(n *xmlNode) {
+		if n.XMLName.Local != "w-r" {
+			return
+		}
+
+		s := string(n.Contents())
+		plaintext += s
+		if s != "" {
+			plaintext += "\n"
+		}
+	})
+
+	return plaintext
 }
