@@ -402,8 +402,27 @@ func (t *Template) ExportDocx(path string) error {
 	return err
 }
 
+// Placeholders - get list of used params placeholders in template
+// If you already replaced params with values then you will not get all placeholders.
+// Or use it after replace and see how many placeholders left.
+func (t *Template) Placeholders() []string {
+	var arr []string
+
+	plaintext := t.Plaintext()
+
+	re := regexp.MustCompile("{{(#|)([a-zA-Z0-9_\\-\\.])+( .|)}}")
+	arr = re.FindAllString(plaintext, -1)
+
+	return arr
+}
+
 // Plaintext - return as plaintext
+// If called before params replaces placeholders will be shown
 func (t *Template) Plaintext() string {
+	// Triggers replace function but in this case doesn't replace anything
+	// only marks template as modified to read plaintext
+	t.Params(nil)
+
 	plaintext := ""
 
 	f := t.MainDocument() // TODO: loop all xml files

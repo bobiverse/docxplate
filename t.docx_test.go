@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"../docxplate"
+	"bitbucket.org/briiC/docxplate"
 )
 
 // Using this data for all examples below
