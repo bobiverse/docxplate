@@ -413,9 +413,6 @@ func (t *Template) Placeholders() []string {
 	re := regexp.MustCompile("{{(#|)([a-zA-Z0-9_\\-\\.])+( .|)}}")
 	arr = re.FindAllString(plaintext, -1)
 
-	color.HiCyan("%+v", arr)
-	// color.Cyan("%+v", t.params)
-
 	return arr
 }
 
