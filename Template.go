@@ -413,15 +413,21 @@ func (t *Template) Placeholders() []string {
 	re := regexp.MustCompile("{{(#|)([a-zA-Z0-9_\\-\\.])+( .|)}}")
 	arr = re.FindAllString(plaintext, -1)
 
+	color.HiCyan("%+v", arr)
+	// color.Cyan("%+v", t.params)
+
 	return arr
 }
 
 // Plaintext - return as plaintext
-// If called before params replaces placeholders will be shown
 func (t *Template) Plaintext() string {
-	// Triggers replace function but in this case doesn't replace anything
-	// only marks template as modified to read plaintext
-	t.Params(nil)
+
+	if len(t.params) == 0 {
+		// if params not set yet we init process with empty params
+		// and mark content as changed so we can return plaintext with placeholders
+		// not replaced yet
+		t.Params(nil)
+	}
 
 	plaintext := ""
 
