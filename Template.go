@@ -6,12 +6,10 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
-	"os"
 	"regexp"
 	"strings"
-
-	"github.com/fatih/color"
 )
 
 // Template ..
@@ -70,7 +68,7 @@ func (t *Template) bytesToXMLStruct(buf []byte) *xmlNode {
 
 	xnode := &xmlNode{}
 	if err := xml.Unmarshal(buf, &xnode); err != nil {
-		color.Red("fileToXMLStruct: %v", err)
+		log.Printf("fileToXMLStruct: %v", err)
 	}
 
 	// Assign parent nodes to all nodes
@@ -80,7 +78,7 @@ func (t *Template) bytesToXMLStruct(buf []byte) *xmlNode {
 		}
 	})
 
-	// color.Cyan("%s", structToXMLBytes(n))
+	// log.Printf("%s", structToXMLBytes(n))
 	return xnode
 }
 
@@ -357,16 +355,13 @@ func (t *Template) mergeSimilarNodes(xnode *xmlNode) {
 	})
 }
 
-// ExportDocx - save new/modified docx based on template
-func (t *Template) ExportDocx(path string) error {
-	fDocx, err := os.Create(path)
-	if err != nil {
-		return err
-	}
-	defer fDocx.Close()
+// Bytes - create docx archive but return only bytes of it
+// do not save it anywhere
+func (t *Template) Bytes() ([]byte, error) {
+	var err error
 
-	zipw := zip.NewWriter(fDocx)
-	defer zipw.Close()
+	bufw := new(bytes.Buffer)
+	zipw := zip.NewWriter(bufw)
 
 	// Loop existing files to build docx archive again
 	for _, f := range t.files {
@@ -391,13 +386,25 @@ func (t *Template) ExportDocx(path string) error {
 		// Move/Write struct-saved file to docx archive file back
 		if buf, isModified := t.modified[f.Name]; isModified {
 			fw.Write(buf)
-			// // DEBUG:
-			// ioutil.WriteFile("XXX.xml", buf, 0666)
 			continue
 		}
 
 		fw.Write(fbuf.Bytes())
 	}
+
+	zipErr := zipw.Close()
+	return bufw.Bytes(), zipErr
+}
+
+// ExportDocx - save new/modified docx based on template
+func (t *Template) ExportDocx(path string) error {
+
+	buf, err := t.Bytes()
+	if err != nil {
+		return err
+	}
+
+	err = ioutil.WriteFile(path, buf, 0644)
 
 	return err
 }

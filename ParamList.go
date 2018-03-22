@@ -14,8 +14,6 @@ type ParamList []*Param
 func StructParams(v interface{}) ParamList {
 	// to JSON output
 	buf, _ := json.MarshalIndent(v, "", "\t")
-	// color.Magenta("StructParams: %s\n", buf)
-
 	return JSONToParams(buf)
 }
 
@@ -30,10 +28,6 @@ func JSONToParams(buf []byte) ParamList {
 	params.Walk(func(p *Param) {
 		// use Walk func built-in logic to assign keys
 	})
-
-	// // DEBUG:
-	// dbg, _ := json.MarshalIndent(params, "", "\t")
-	// color.Yellow("\n\nParams: %s\n\n", dbg)
 
 	return params
 }
