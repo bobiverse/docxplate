@@ -417,7 +417,8 @@ func (t *Template) Placeholders() []string {
 
 	plaintext := t.Plaintext()
 
-	re := regexp.MustCompile("{{(#|)([a-zA-Z0-9_\\-\\.])+( .|)}}")
+	// re := regexp.MustCompile("{{(#|)([a-zA-Z0-9_\\-\\.])+( .|)}}")
+	re := regexp.MustCompile("{{(#|)[\\w\\.]+?(| .| )+?}}")
 	arr = re.FindAllString(plaintext, -1)
 
 	return arr
