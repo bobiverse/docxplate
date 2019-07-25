@@ -83,6 +83,12 @@ func (xnode *xmlNode) isRowElement() bool {
 // HaveParams - does node contents contains any param
 func (xnode *xmlNode) HaveParams() bool {
 	buf := xnode.Contents()
+
+	// if bytes.Contains(buf, []byte("{{")) && !bytes.Contains(buf, []byte("}}")) {
+	// 	log.Printf("ERROR: Broken param: [%s]", string(buf))
+	// 	log.Printf("Param node: [%+v]", xnode)
+	// }
+
 	have := bytes.Contains(buf, []byte("{{"))        // start
 	have = have && bytes.Contains(buf, []byte("}}")) // end
 	return have

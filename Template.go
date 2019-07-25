@@ -330,15 +330,29 @@ func (t *Template) mergeSimilarNodes(xnode *xmlNode) {
 
 			if nprev != nil {
 
-				// Merge only same parent nodes
-				isMergable := nprev.parent == n.parent
-				isMergable = isMergable && n.StylesString() == nprev.StylesString()
-
 				// color.Magenta("\n\n\nM0: %v / %v", nprev.parent == n.parent, nprev.StylesString() == n.StylesString())
 				// color.HiMagenta("S1: %s", nprev.StylesString())
 				// color.HiMagenta("S2: %s", n.StylesString())
 				// color.Cyan("\tM1: Parent:%p %s", nprev.parent, nprev.Contents())
 				// color.HiCyan("\tM2: Parent:%p %s", n.parent, n.Contents())
+				//
+				// Merge only same parent nodes
+				isMergable := nprev.parent == n.parent
+				isMergable = isMergable && n.StylesString() == nprev.StylesString()
+
+				// Forcefully merge broken param if even nodes have two different styles
+				if !isMergable {
+					// have end but doesn't have beginning in the same node
+					isBrokenEnd := bytes.Contains(n.Contents(), []byte("}}"))
+					isBrokenEnd = isBrokenEnd && !bytes.Contains(n.Contents(), []byte("{{"))
+
+					// previous node have beginning but no end
+					isBrokenBeginning := bytes.Contains(nprev.Contents(), []byte("{{"))
+					isBrokenBeginning = isBrokenBeginning && !bytes.Contains(nprev.Contents(), []byte("}}"))
+
+					// merge splitted param
+					isMergable = isBrokenEnd && isBrokenBeginning
+				}
 
 				if isMergable {
 					// color.Yellow("\tMERGE: %s%s", nprev.Contents(), color.HiYellowString("%s", n.Contents()))

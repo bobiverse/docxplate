@@ -10,10 +10,11 @@ import (
 
 // Using this data for all examples below
 type User struct {
-	Name      string
-	Age       int
-	Nicknames []string
-	Friends   []*User
+	Name                   string
+	Age                    int
+	Nicknames              []string
+	Friends                []*User
+	BrokenStylePlaceholder string
 }
 
 var user = User{
@@ -25,6 +26,7 @@ var user = User{
 		&User{Name: "Cecilia", Age: 29},
 		&User{Name: "Den", Age: 30},
 	},
+	BrokenStylePlaceholder: "Test broken placeholder",
 }
 
 func TestParamsReplace(t *testing.T) {
@@ -43,8 +45,6 @@ func TestParamsReplace(t *testing.T) {
 		case "json":
 			tdoc.Params(user)
 		}
-
-		tdoc.Bytes()
 
 		plaintext := tdoc.Plaintext()
 
