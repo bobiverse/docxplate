@@ -34,3 +34,13 @@ func structToXMLBytes(v interface{}) []byte {
 
 	return buf
 }
+
+// Is slice contains item
+func inSlice(a string, slice []string) bool {
+	for _, b := range slice {
+		if a == b {
+			return true
+		}
+	}
+	return false
+}

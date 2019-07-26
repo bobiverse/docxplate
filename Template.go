@@ -351,7 +351,8 @@ func (t *Template) fixBrokenPlaceholders(xnode *xmlNode) {
 
 				// Found placeholder start
 				if bytes.Contains(wtNode.Content, []byte("{{")) {
-					keepNode = wtNode.parent // Must use as "w-r"
+					keepNode = wtNode.cloneAndAppend()
+					keepNode.Content = nil // clear to append later
 				}
 
 				if keepNode == nil {
@@ -361,7 +362,7 @@ func (t *Template) fixBrokenPlaceholders(xnode *xmlNode) {
 				// Append contens if not completed placeholder
 				// fmt.Printf("\tFIX: %s", wtNode)
 				keepNode.Content = append(keepNode.Content, wtNode.Content...)
-				wtNode.delete() // delete merged node
+				wtNode.delete()
 			})
 			// fmt.Printf("Merged: %s", keepNode)
 
