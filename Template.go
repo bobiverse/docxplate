@@ -124,15 +124,15 @@ func (t *Template) expandPlaceholders(xnode *xmlNode) {
 					return
 				}
 
-				// color.Blue("%-30s - %s", prefix, nrow.Contents())
+				// fmt.Printf("%-30s - %s", prefix, nrow.Contents())
 				for _, p2 := range p.Params {
-					// color.Cyan("\tCLONE: %s -- %s -- %s", prefix+p2.Key, p2.PlaceholderPrefix(), nrow.Contents())
+					// fmt.Printf("\tCLONE: %s -- %s -- %s", prefix+p2.Key, p2.PlaceholderPrefix(), nrow.Contents())
 					nnew := nrow.cloneAndAppend()
 					nnew.Walk(func(n *xmlNode) {
 						pattern := strings.Replace(prefix, ".", "\\.", -1)
 						pattern += `\d` // is already have some index number at the end
 						if isMatch, _ := regexp.Match(pattern, n.Content); isMatch {
-							// color.Red("SKIP: %s", n.Content)
+							// fmt.Printf("SKIP: %s", n.Content)
 							return
 						}
 						n.Content = bytes.Replace(n.Content, []byte(prefix), []byte(p2.PlaceholderPrefix()), -1)
@@ -181,7 +181,7 @@ func (t *Template) replaceRowParams(xnode *xmlNode) {
 			}
 			// Add new xml nodes for every param sub-param
 			for _, p2 := range p.Params {
-				// color.Blue("%30s = %v", p.Placeholder(), p2.Value)
+				// fmt.Printf("%30s = %v", p.Placeholder(), p2.Value)
 				nnew := nrow.cloneAndAppend()
 				nnew.Walk(func(nnew *xmlNode) {
 					nnew.Content = bytes.Replace(nnew.Content, []byte(p.Placeholder()), []byte(p2.Value), -1)
@@ -260,7 +260,7 @@ func (t *Template) replaceSingleParams(xnode *xmlNode) {
 					// do not replace slice/map values here. Only singles
 					return
 				}
-				// color.Blue("%30s --> %+v", p.Placeholder(), p.Value)
+				// fmt.Printf("%30s --> %+v", p.Placeholder(), p.Value)
 				n.Content = bytes.Replace(n.Content, []byte(p.Placeholder()), []byte(p.Value), -1)
 				n.Content = bytes.Replace(n.Content, []byte(p.PlaceholderKey()), []byte(p.Key), -1)
 			})
@@ -287,7 +287,7 @@ func (t *Template) Params(v interface{}) {
 	// While formating docx sometimes same style node is split to
 	// multiple same style nodes and different content
 	// Merge them so placeholders are in the same node
-	t.mergeSimilarNodes(xnode)
+	t.fixBrokenPlaceholders(xnode)
 
 	// First try to replace all exact-match placeholders
 	// Do it before expand because it may expand unwanted placeholders
@@ -303,67 +303,68 @@ func (t *Template) Params(v interface{}) {
 
 	// // DEBUG:
 	// for _, p := range t.params {
-	// 	color.Green("|| %-20s %v", p.Key, p.Value)
+	// 	fmt.Printf("|| %-20s %v", p.Key, p.Value)
 	// }
 
 	// Save []bytes
 	t.modified[f.Name] = structToXMLBytes(xnode)
 }
 
-// Merge similar nodes of same styles.
-// Like "w-p" (Record) can hold multiple "w-r" with same styles
+// Fix broken placeholders by merging "w-t" nodes.
+// "w-p" (Record) can hold multiple "w-r". And "w-r" holts "w-t" node
 // -
 // If these nodes not fixed than params replace can not be done as
 // replacer process nodes one by one
-func (t *Template) mergeSimilarNodes(xnode *xmlNode) {
+func (t *Template) fixBrokenPlaceholders(xnode *xmlNode) {
 	xnode.Walk(func(xnode *xmlNode) {
 		if !xnode.HaveParams() {
 			return
 		}
 
-		var nprev *xmlNode
 		xnode.Walk(func(n *xmlNode) {
-			//child scope
 			if n.XMLName.Local != "w-r" {
 				return
 			}
 
-			if nprev != nil {
+			// fmt.Printf("FIX: %s", n)
 
-				// color.Magenta("\n\n\nM0: %v / %v", nprev.parent == n.parent, nprev.StylesString() == n.StylesString())
-				// color.HiMagenta("S1: %s", nprev.StylesString())
-				// color.HiMagenta("S2: %s", n.StylesString())
-				// color.Cyan("\tM1: Parent:%p %s", nprev.parent, nprev.Contents())
-				// color.HiCyan("\tM2: Parent:%p %s", n.parent, n.Contents())
-				//
-				// Merge only same parent nodes
-				isMergable := nprev.parent == n.parent
-				isMergable = isMergable && n.StylesString() == nprev.StylesString()
+			// have end but doesn't have beginning in the same node
+			// NOTE: parent "w-p" should contain broken placeholder end "}}"
+			isBrokenEnd := bytes.Contains(n.Contents(), []byte("}}"))
+			isBrokenEnd = isBrokenEnd && !bytes.Contains(n.Contents(), []byte("{{"))
+			isBrokenEnd = isBrokenEnd && bytes.Contains(n.parent.Contents(), []byte("}}"))
 
-				// Forcefully merge broken param if even nodes have two different styles
-				if !isMergable {
-					// have end but doesn't have beginning in the same node
-					isBrokenEnd := bytes.Contains(n.Contents(), []byte("}}"))
-					isBrokenEnd = isBrokenEnd && !bytes.Contains(n.Contents(), []byte("{{"))
-
-					// previous node have beginning but no end
-					isBrokenBeginning := bytes.Contains(nprev.Contents(), []byte("{{"))
-					isBrokenBeginning = isBrokenBeginning && !bytes.Contains(nprev.Contents(), []byte("}}"))
-
-					// merge splitted param
-					isMergable = isBrokenEnd && isBrokenBeginning
-				}
-
-				if isMergable {
-					// color.Yellow("\tMERGE: %s%s", nprev.Contents(), color.HiYellowString("%s", n.Contents()))
-					bufMerged := append(nprev.Contents(), n.Contents()...)
-					nprev.ReplaceInContents(nprev.Contents(), bufMerged)
-					n.delete()
-					return
-				}
+			if !isBrokenEnd {
+				return
 			}
 
-			nprev = n
+			var keepNode *xmlNode
+			n.parent.Walk(func(wtNode *xmlNode) {
+				if wtNode.XMLName.Local != "w-t" {
+					return
+				}
+
+				// finished: skip rest
+				if keepNode != nil && bytes.Contains(keepNode.Content, []byte("}}")) {
+					return
+				}
+
+				// Found placeholder start
+				if bytes.Contains(wtNode.Content, []byte("{{")) {
+					keepNode = wtNode.parent // Must use as "w-r"
+				}
+
+				if keepNode == nil {
+					return
+				}
+
+				// Append contens if not completed placeholder
+				// fmt.Printf("\tFIX: %s", wtNode)
+				keepNode.Content = append(keepNode.Content, wtNode.Content...)
+				wtNode.delete() // delete merged node
+			})
+			// fmt.Printf("Merged: %s", keepNode)
+
 		})
 
 	})

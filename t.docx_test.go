@@ -2,6 +2,7 @@ package docxplate_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -26,7 +27,7 @@ var user = User{
 		&User{Name: "Cecilia", Age: 29},
 		&User{Name: "Den", Age: 30},
 	},
-	BrokenStylePlaceholder: "Test broken placeholder",
+	BrokenStylePlaceholder: "--> UNBREAKABLE <--",
 }
 
 func TestParamsReplace(t *testing.T) {
@@ -47,6 +48,7 @@ func TestParamsReplace(t *testing.T) {
 		}
 
 		plaintext := tdoc.Plaintext()
+		fmt.Printf("Placeholders: %+v\n", tdoc.Placeholders())
 
 		// Does non-replacable placeholders still exists
 		if !strings.Contains(plaintext, "{{NotReplacable}}") {
@@ -60,6 +62,7 @@ func TestParamsReplace(t *testing.T) {
 		if leftParams {
 			t.Errorf("Some params not replaced: \n\n%s", plaintext)
 		}
+
 	}
 
 }

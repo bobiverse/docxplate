@@ -3,6 +3,7 @@ package docxplate
 import (
 	"bytes"
 	"encoding/xml"
+	"fmt"
 	"regexp"
 )
 
@@ -41,7 +42,7 @@ func (xnode *xmlNode) Walk(fn func(*xmlNode)) {
 
 // Contents - return contents of this and all childs contents merge
 func (xnode *xmlNode) Contents() []byte {
-	var buf []byte
+	buf := xnode.Content
 	xnode.Walk(func(n *xmlNode) {
 		buf = append(buf, n.Content...)
 	})
@@ -201,4 +202,15 @@ func (xnode *xmlNode) ReplaceInContents(old, new []byte) []byte {
 		n.Content = bytes.Replace(n.Content, old, new, -1)
 	})
 	return xnode.Contents()
+}
+
+// String get node as string for debugging purposes
+// prints useful information
+func (xnode *xmlNode) String() string {
+	s := fmt.Sprintf("%s: ", xnode.XMLName.Local)
+	s += fmt.Sprintf("[%s] == ", xnode.Content)
+	s += fmt.Sprintf("[%s]", xnode.Contents())
+	s += fmt.Sprintf("\tParent: %s", xnode.parent.XMLName.Local)
+	// s += fmt.Sprintf("\t-- %s", xnode.StylesString())
+	return s
 }
