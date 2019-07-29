@@ -1,9 +1,14 @@
 package docxplate
 
 import (
+	"bytes"
 	"fmt"
 	"strings"
 )
+
+// ParamPattern - regex pattern to identify params
+// const ParamPattern = `{{(#|)[\w\.]+?(| .| )+?}}`
+const ParamPattern = `{{(#|)[\w\.]+?(| .| +)(|(:[a-z]+)+)+?}}`
 
 // Param ..
 type Param struct {
@@ -17,6 +22,8 @@ type Param struct {
 
 	AbsoluteKey string // Users.1.Name
 	CompactKey  string // Users.Name
+
+	Trigger *ParamTrigger
 }
 
 // NewParam ..
@@ -70,6 +77,16 @@ func (p *Param) PlaceholderKeyPrefix() string {
 	return "{{#" + p.AbsoluteKey + "." // "{{#Key."
 }
 
+// PlaceholderWithTrigger .. {{Key :empty:remove:list}}
+func (p *Param) PlaceholderWithTrigger() string {
+	return "{{" + p.AbsoluteKey + " " + p.Trigger.String() + "}}"
+}
+
+// PlaceholderKeyWithTrigger .. {{#Key :empty:remove:list}}
+func (p *Param) PlaceholderKeyWithTrigger() string {
+	return "{{#" + p.AbsoluteKey + " " + p.Trigger.String() + "}}"
+}
+
 // ToCompact - convert AbsoluteKey placeholder to ComplexKey placeholder
 // {{Users.0.Name}} --> {{Users.Name}}
 func (p *Param) ToCompact(placeholder string) string {
@@ -110,4 +127,81 @@ func (p *Param) Walk(fn func(*Param)) {
 // {{Users.1.Name}} --> 3
 func (p *Param) Depth() int {
 	return strings.Count(p.AbsoluteKey, ".") + 1
+}
+
+// Try to extract trigger from raw contents specific to this param
+func (p *Param) extractTriggerFrom(buf []byte) *ParamTrigger {
+	prefixes := []string{
+		p.PlaceholderInline(),
+		p.PlaceholderKeyInline(),
+	}
+	for _, pref := range prefixes {
+		bpref := []byte(pref)
+		if !bytes.Contains(buf, bpref) {
+			continue
+		}
+
+		// Get part where trigger is (remove plaheolder prefix)
+		buf := bytes.SplitN(buf, bpref, 2)[1]
+
+		// Remove placeholder suffix and only raw trigger part left
+		buf = bytes.SplitN(buf, []byte("}}"), 2)[0]
+
+		p.Trigger = NewParamTrigger(buf)
+		return p.Trigger
+	}
+
+	return nil
+}
+
+// RunTrigger - execute trigger
+func (p *Param) RunTrigger(xnode *xmlNode) {
+
+	if p.Trigger.On == TriggerOnEmpty && p.Value != "" {
+		return
+	}
+
+	// 1. Scope - find affected node
+	var ntypes = NodeSingleTypes
+	switch p.Trigger.Scope {
+	case TriggerScopeCell:
+		ntypes = NodeCellTypes
+	case TriggerScopeRow:
+		ntypes = NodeRowTypes
+	case TriggerScopeList:
+		ntypes = []string{"w-bookmarkStart"} // list item marked with main:id
+	case TriggerScopeTable:
+		ntypes = []string{"w-tbl"}
+	case TriggerScopeSection:
+		ntypes = NodeSectionTypes
+	}
+
+	n := xnode.closestUp(ntypes)
+	if n == nil || n.isDeleted {
+		// color.Red("EMPTY parent of %v", xnode.Tag())
+		return
+	}
+
+	if p.Trigger.Command == TriggerCommandRemove {
+		// n.printTree("TRIGGER REMOVE")
+		n.Nodes = nil
+		n.delete()
+		return
+	}
+
+	if p.Trigger.Command == TriggerCommandClear {
+		n.Content = nil
+		n.Walk(func(n2 *xmlNode) {
+			n2.Content = nil
+		})
+		return
+	}
+
+}
+
+// String - compact debug information as string
+func (p *Param) String() string {
+	s := fmt.Sprintf("%34s=%-20s", p.AbsoluteKey, p.Value)
+	s += fmt.Sprintf("\tTrigger[%s]", p.Trigger)
+	return s
 }

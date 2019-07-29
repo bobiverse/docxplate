@@ -5,7 +5,22 @@ import (
 	"encoding/xml"
 	"fmt"
 	"regexp"
+	"strings"
+
+	"github.com/fatih/color"
 )
+
+// NodeSingleTypes - NB! sequence is important
+var NodeSingleTypes = []string{"w-r", "w-t"}
+
+// NodeCellTypes - NB! sequence is important
+var NodeCellTypes = []string{"w-tc"}
+
+// NodeRowTypes - NB! sequence is important
+var NodeRowTypes = []string{"w-tr", "w-bookmarkStart"}
+
+// NodeSectionTypes - NB! sequence is important
+var NodeSectionTypes = []string{"w-tbl", "w-bookmarkStart"}
 
 type xmlNode struct {
 	XMLName xml.Name
@@ -13,8 +28,10 @@ type xmlNode struct {
 	Content []byte     `xml:",chardata"`
 	Nodes   []*xmlNode `xml:",any"`
 
-	parent *xmlNode
-	isNew  bool // added recently
+	parent    *xmlNode
+	isNew     bool // added recently
+	isDeleted bool
+	haveParam bool // have some kind of param placeholder
 }
 
 // UnmarshalXML ..
@@ -33,15 +50,30 @@ func (xnode *xmlNode) Walk(fn func(*xmlNode)) {
 
 		fn(n) // do your custom stuff
 
-		if len(n.Nodes) > 0 {
+		if n.Nodes != nil {
 			//continue only if have deeper nodes
 			n.Walk(fn)
 		}
 	}
 }
 
+// Walk down all nodes and do custom stuff with given function
+func (xnode *xmlNode) WalkTree(depth int, fn func(int, *xmlNode)) {
+	for _, n := range xnode.Nodes {
+		if n == nil {
+			continue
+		}
+
+		fn(depth+1, n) // do your custom stuff
+
+		if n.Nodes != nil {
+			n.WalkTree(depth+1, fn)
+		}
+	}
+}
+
 // Contents - return contents of this and all childs contents merge
-func (xnode *xmlNode) Contents() []byte {
+func (xnode *xmlNode) AllContents() []byte {
 	buf := xnode.Content
 	xnode.Walk(func(n *xmlNode) {
 		buf = append(buf, n.Content...)
@@ -83,7 +115,7 @@ func (xnode *xmlNode) isRowElement() bool {
 
 // HaveParams - does node contents contains any param
 func (xnode *xmlNode) HaveParams() bool {
-	buf := xnode.Contents()
+	buf := xnode.AllContents()
 
 	// if bytes.Contains(buf, []byte("{{")) && !bytes.Contains(buf, []byte("}}")) {
 	// 	log.Printf("ERROR: Broken param: [%s]", string(buf))
@@ -127,7 +159,7 @@ func (xnode *xmlNode) parentString(limit int) string {
 
 // index of element inside parent.Nodes slice
 func (xnode *xmlNode) index() int {
-	if xnode.parent != nil {
+	if xnode != nil && xnode.parent != nil {
 		for i, n := range xnode.parent.Nodes {
 			if xnode == n {
 				return i
@@ -143,11 +175,8 @@ func (xnode *xmlNode) cloneAndAppend() *xmlNode {
 	parent := xnode.parent
 
 	// new copy node
-	nnew := xnode.clone()
+	nnew := xnode.clone() // parent cleaned
 	nnew.isNew = true
-	// nnew.Walk(func(nnew *xmlNode) {
-	// 	// nnew.Content = bytes.Replace(nnew.Content, []byte("}}"), []byte(" CLONE }}"), -1)
-	// })
 
 	// Find node index in parent hierarchy and chose next index as copy place
 	i := xnode.index()
@@ -159,6 +188,15 @@ func (xnode *xmlNode) cloneAndAppend() *xmlNode {
 
 	// Insert into specific index
 	parent.Nodes = append(parent.Nodes[:i], append([]*xmlNode{nnew}, parent.Nodes[i:]...)...)
+
+	// fix pointers because cloned element have incorrect parents
+	nnew.parent.Walk(func(nnew *xmlNode) {
+		for _, n := range nnew.Nodes {
+			if n != nil {
+				n.parent = nnew
+			}
+		}
+	})
 
 	return nnew
 }
@@ -184,16 +222,46 @@ func (xnode *xmlNode) clone() *xmlNode {
 
 // Delete node
 func (xnode *xmlNode) delete() {
-	// clear contents first
-	xnode.Walk(func(nrow *xmlNode) {
-		xnode.Content = nil
-	})
+	// xnode.printTree("Delete")
 
 	// remove from list
 	index := xnode.index()
 	if index != -1 {
 		xnode.parent.Nodes[index] = nil
 	}
+	xnode.isDeleted = true
+}
+
+// Find closest parent way up by node type
+func (xnode *xmlNode) closestUp(nodeTypes []string) *xmlNode {
+	for _, ntype := range nodeTypes {
+		if xnode.parent == nil {
+			continue
+		}
+		if xnode.parent.isDeleted {
+			continue
+		}
+
+		// color.Magenta("[%s] == [%s]", xnode.parent.Tag(), ntype)
+		if xnode.parent.Tag() == ntype {
+			// color.Green("found parent: [%s] == [%s]", xnode.parent.Tag(), ntype)
+			return xnode.parent
+		}
+
+		for _, n := range xnode.parent.Nodes {
+			if n.Tag() == ntype {
+				// color.Green("found parent: [%s] == [%s]", n.Tag(), ntype)
+				return n
+			}
+
+		}
+
+		if pn := xnode.parent.closestUp([]string{ntype}); pn != nil {
+			return pn
+		}
+	}
+
+	return nil
 }
 
 // ReplaceInContents - replace plain text contents with something
@@ -201,16 +269,93 @@ func (xnode *xmlNode) ReplaceInContents(old, new []byte) []byte {
 	xnode.Walk(func(n *xmlNode) {
 		n.Content = bytes.Replace(n.Content, old, new, -1)
 	})
-	return xnode.Contents()
+	return xnode.AllContents()
+}
+
+// Tag ..
+func (xnode *xmlNode) Tag() string {
+	if xnode == nil {
+		return "(nil)"
+	}
+
+	return xnode.XMLName.Local
 }
 
 // String get node as string for debugging purposes
 // prints useful information
 func (xnode *xmlNode) String() string {
-	s := fmt.Sprintf("%s: ", xnode.XMLName.Local)
-	s += fmt.Sprintf("[%s] == ", xnode.Content)
-	s += fmt.Sprintf("[%s]", xnode.Contents())
-	s += fmt.Sprintf("\tParent: %s", xnode.parent.XMLName.Local)
+	s := fmt.Sprintf("#%d: ", xnode.index())
+	if xnode.isDeleted {
+		s += color.RedString(" !!DELETED!! ")
+
+	}
+	s += fmt.Sprintf("-- %p -- ", xnode)
+	s += fmt.Sprintf("%s: ", xnode.Tag())
+	s += fmt.Sprintf("[Content:%s]", xnode.Content)
+	s += fmt.Sprintf(" %3d", len(xnode.Nodes))
+	// s += fmt.Sprintf("[%s]", xnode.AllContents())
+	s += fmt.Sprintf("\tParent: %s", xnode.parent.Tag())
 	// s += fmt.Sprintf("\t-- %s", xnode.StylesString())
 	return s
+}
+
+// Print tree of node and down
+func (xnode *xmlNode) printTree(label string) {
+	fmt.Printf("[ %s ]", label)
+	fmt.Println("|" + strings.Repeat("-", 80))
+
+	if xnode == nil {
+		color.Red("Empty node.")
+		return
+	}
+	fmt.Printf("|%s |%p| %s\n", xnode.XMLName.Local, xnode, xnode.Content)
+
+	xnode.WalkTree(0, func(depth int, n *xmlNode) {
+		s := "|"
+		s += strings.Repeat(" ", depth*4)
+
+		s += fmt.Sprintf("%-10s", n.XMLName.Local)
+		if xnode.isNew {
+			s = color.CyanString(s)
+		}
+		if xnode.isDeleted {
+			s = color.HiRedString(s)
+		}
+
+		s += fmt.Sprintf("|%p|", n)
+		sptr := fmt.Sprintf("|%p| ", n.parent)
+		if n.parent == nil {
+			sptr = color.HiRedString(sptr)
+		}
+		s += sptr
+
+		// if bytes.TrimSpace(n.Contents()) != nil {
+		// 	s += color.MagentaString(" (%s)", n.Contents())
+		// }
+
+		if bytes.TrimSpace(n.Content) != nil {
+			s += color.YellowString("[%s]", n.Content)
+		} else if n.haveParam {
+			s += color.HiMagentaString("<< empty param value >>")
+		}
+
+		// s += color.CyanString(" -- %s", n.StylesString())
+
+		fmt.Println(s)
+	})
+
+	fmt.Println("|" + strings.Repeat("-", 80))
+}
+
+func (xnode *xmlNode) attrID() string {
+	if xnode == nil {
+		return ""
+	}
+
+	for _, attr := range xnode.Attrs {
+		if attr.Name.Local == "id" {
+			return attr.Value
+		}
+	}
+	return ""
 }

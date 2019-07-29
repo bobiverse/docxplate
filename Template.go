@@ -9,7 +9,6 @@ import (
 	"io/ioutil"
 	"log"
 	"regexp"
-	"strings"
 )
 
 // Template ..
@@ -66,20 +65,24 @@ func (t *Template) bytesToXMLStruct(buf []byte) *xmlNode {
 	buf = bytes.Replace(buf, []byte("<w:"), []byte("<w-"), -1)
 	buf = bytes.Replace(buf, []byte("</w:"), []byte("</w-"), -1)
 
-	xnode := &xmlNode{}
-	if err := xml.Unmarshal(buf, &xnode); err != nil {
+	xdocNode := &xmlNode{}
+	if err := xml.Unmarshal(buf, &xdocNode); err != nil {
 		log.Printf("fileToXMLStruct: %v", err)
 	}
 
 	// Assign parent nodes to all nodes
-	xnode.Walk(func(xnode *xmlNode) {
+	xdocNode.Walk(func(xnode *xmlNode) {
+		if xnode.Tag() == "w-body" {
+			xnode.parent = xdocNode
+		}
+
 		for _, n := range xnode.Nodes {
 			n.parent = xnode
 		}
 	})
 
 	// log.Printf("%s", structToXMLBytes(n))
-	return xnode
+	return xdocNode
 }
 
 // Convert given file (from template.Files) to struct of xml nodes
@@ -126,16 +129,18 @@ func (t *Template) expandPlaceholders(xnode *xmlNode) {
 
 				// fmt.Printf("%-30s - %s", prefix, nrow.Contents())
 				for _, p2 := range p.Params {
-					// fmt.Printf("\tCLONE: %s -- %s -- %s", prefix+p2.Key, p2.PlaceholderPrefix(), nrow.Contents())
+					// fmt.Printf("\tCLONE: %s -- %s -- %s\n", prefix+p2.Key, p2.PlaceholderPrefix(), nrow.Contents())
 					nnew := nrow.cloneAndAppend()
 					nnew.Walk(func(n *xmlNode) {
-						pattern := strings.Replace(prefix, ".", "\\.", -1)
-						pattern += `\d` // is already have some index number at the end
-						if isMatch, _ := regexp.Match(pattern, n.Content); isMatch {
-							// fmt.Printf("SKIP: %s", n.Content)
+						if !inSlice(n.XMLName.Local, []string{"w-t"}) {
 							return
 						}
-						n.Content = bytes.Replace(n.Content, []byte(prefix), []byte(p2.PlaceholderPrefix()), -1)
+						n.Content = bytes.Replace(n.Content, []byte(prefix), []byte(p2.PlaceholderPrefix()), -1) // w-t
+						n.haveParam = true
+						// n.parent.Content = nil                                                                   // w-r
+						//
+						// color.Magenta("\t clone: %s", n)
+						// color.HiMagenta("\t clone: %s -- %s", n.Content, n.Contents())
 					})
 				}
 				nrow.delete()
@@ -187,6 +192,7 @@ func (t *Template) replaceRowParams(xnode *xmlNode) {
 					nnew.Content = bytes.Replace(nnew.Content, []byte(p.Placeholder()), []byte(p2.Value), -1)
 					nnew.Content = bytes.Replace(nnew.Content, []byte(p.PlaceholderKey()), []byte(p2.Key), -1)
 				})
+
 			}
 			// Remove original row which contains placeholder
 			nrow.delete()
@@ -203,7 +209,7 @@ func (t *Template) replaceInlineParams(xnode *xmlNode) {
 		if !n.HaveParams() {
 			return
 		}
-		contents := n.Contents()
+		contents := n.AllContents()
 
 		t.params.Walk(func(p *Param) {
 			if p.Params == nil {
@@ -253,6 +259,10 @@ func (t *Template) replaceInlineParams(xnode *xmlNode) {
 }
 func (t *Template) replaceSingleParams(xnode *xmlNode) {
 	xnode.Walk(func(n *xmlNode) {
+		if n == nil || n.isDeleted {
+			return
+		}
+
 		if bytes.Index(n.Content, []byte("{{")) >= 0 {
 			// Try to replace on node that contains possible placeholder
 			t.params.Walk(func(p *Param) {
@@ -260,6 +270,15 @@ func (t *Template) replaceSingleParams(xnode *xmlNode) {
 					// do not replace slice/map values here. Only singles
 					return
 				}
+
+				// Trigger: does placeholder have trigger
+				if p.extractTriggerFrom(n.Content) != nil {
+					n.Content = bytes.Replace(n.Content, []byte(p.PlaceholderWithTrigger()), []byte(p.Value), -1)
+					n.Content = bytes.Replace(n.Content, []byte(p.PlaceholderKeyWithTrigger()), []byte(p.Key), -1)
+					p.RunTrigger(n)
+					return
+				}
+
 				// fmt.Printf("%30s --> %+v", p.Placeholder(), p.Value)
 				n.Content = bytes.Replace(n.Content, []byte(p.Placeholder()), []byte(p.Value), -1)
 				n.Content = bytes.Replace(n.Content, []byte(p.PlaceholderKey()), []byte(p.Key), -1)
@@ -297,6 +316,12 @@ func (t *Template) Params(v interface{}) {
 	// for correct replace
 	t.expandPlaceholders(xnode)
 
+	// xnode.Walk(func(xn *xmlNode) {
+	// 	if xn.XMLName.Local == "w-tbl" {
+	// 		xn.printTree("BEFORE REPLACE")
+	// 	}
+	// })
+
 	t.replaceRowParams(xnode)
 	t.replaceInlineParams(xnode)
 	t.replaceSingleParams(xnode)
@@ -317,29 +342,33 @@ func (t *Template) Params(v interface{}) {
 // replacer process nodes one by one
 func (t *Template) fixBrokenPlaceholders(xnode *xmlNode) {
 	xnode.Walk(func(xnode *xmlNode) {
-		if !xnode.HaveParams() {
+		if !xnode.isRowElement() {
+			// broken placeholders are in row elements
 			return
 		}
 
-		xnode.Walk(func(n *xmlNode) {
-			if n.XMLName.Local != "w-r" {
+		if !xnode.HaveParams() {
+			// whole text doesn't hold any params
+			return
+		}
+
+		xnode.WalkTree(0, func(depth int, wrNode *xmlNode) {
+			if wrNode.XMLName.Local != "w-r" {
 				return
 			}
 
-			// fmt.Printf("FIX: %s", n)
-
 			// have end but doesn't have beginning in the same node
 			// NOTE: parent "w-p" should contain broken placeholder end "}}"
-			isBrokenEnd := bytes.Contains(n.Contents(), []byte("}}"))
-			isBrokenEnd = isBrokenEnd && !bytes.Contains(n.Contents(), []byte("{{"))
-			isBrokenEnd = isBrokenEnd && bytes.Contains(n.parent.Contents(), []byte("}}"))
+			isBrokenEnd := bytes.Contains(wrNode.AllContents(), []byte("}}"))
+			isBrokenEnd = isBrokenEnd && !bytes.Contains(wrNode.AllContents(), []byte("{{"))
+			isBrokenEnd = isBrokenEnd && bytes.Contains(wrNode.parent.AllContents(), []byte("}}"))
 
 			if !isBrokenEnd {
 				return
 			}
 
 			var keepNode *xmlNode
-			n.parent.Walk(func(wtNode *xmlNode) {
+			wrNode.parent.WalkTree(depth, func(depth int, wtNode *xmlNode) {
 				if wtNode.XMLName.Local != "w-t" {
 					return
 				}
@@ -351,8 +380,8 @@ func (t *Template) fixBrokenPlaceholders(xnode *xmlNode) {
 
 				// Found placeholder start
 				if bytes.Contains(wtNode.Content, []byte("{{")) {
-					keepNode = wtNode.cloneAndAppend()
-					keepNode.Content = nil // clear to append later
+					keepNode = wtNode
+					return
 				}
 
 				if keepNode == nil {
@@ -360,10 +389,11 @@ func (t *Template) fixBrokenPlaceholders(xnode *xmlNode) {
 				}
 
 				// Append contens if not completed placeholder
-				// fmt.Printf("\tFIX: %s", wtNode)
 				keepNode.Content = append(keepNode.Content, wtNode.Content...)
-				wtNode.delete()
+				// `w-t` node is under `w-r` so remove parent `w-r`
+				wtNode.parent.delete()
 			})
+
 			// fmt.Printf("Merged: %s", keepNode)
 
 		})
@@ -460,7 +490,7 @@ func (t *Template) Plaintext() string {
 			return
 		}
 
-		s := string(n.Contents())
+		s := string(n.AllContents())
 		plaintext += s
 		if s != "" {
 			plaintext += "\n"
