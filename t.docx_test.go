@@ -146,3 +146,62 @@ func TestOnTables(t *testing.T) {
 	}
 
 }
+
+func TestOnLists(t *testing.T) {
+	var user = User{
+		Name:      "Alice",
+		Age:       27,
+		Nicknames: []string{"amber", "", "AL", "ice", "", "", "", "", "", "", "", ""},
+		Friends: []*User{
+			&User{Name: "", Age: 999},
+			&User{Name: "Bob", Age: 28},
+			&User{Name: "Cecilia", Age: 29},
+			&User{Name: "", Age: 999},
+			&User{Name: "Den", Age: 30},
+			&User{Name: "", Age: 999},
+			&User{Name: "Edgar", Age: 31},
+			&User{Name: "", Age: 999},
+			&User{Name: "", Age: 999},
+		},
+		BrokenStylePlaceholder: "(NOT ANYMORE)",
+	}
+
+	inputs := []string{
+		"struct",
+		"json",
+	}
+
+	// Test param setup byu different input types
+	for _, inType := range inputs {
+		// tdoc, _ := docxplate.OpenTemplate("test-data/user.template.docx")
+		tdoc, _ := docxplate.OpenTemplate("test-data/lists.docx")
+		switch inType {
+		case "struct":
+			buf, _ := json.Marshal(user)
+			tdoc.Params(buf)
+		case "json":
+			tdoc.Params(user)
+		}
+
+		plaintext := tdoc.Plaintext()
+		tdoc.ExportDocx("test-data/~test-" + inType + ".docx")
+
+		// All valid params replaced
+		leftParams := strings.Contains(plaintext, "{{")
+		leftParams = leftParams && strings.Contains(plaintext, "}}")
+		if leftParams {
+			t.Fatalf("Some params not replaced: \n\n%s", plaintext)
+		}
+
+		// Check for "must remove" text
+		isTriggerSuccess := !strings.Contains(plaintext, "must be removed")
+		isTriggerSuccess = isTriggerSuccess && !strings.Contains(plaintext, "999 y/o")
+		if !isTriggerSuccess {
+			t.Fatalf("Some items not removed: \n\n%s", plaintext)
+		}
+
+		// fmt.Println(plaintext)
+
+	}
+
+}

@@ -169,7 +169,7 @@ func (p *Param) RunTrigger(xnode *xmlNode) {
 	case TriggerScopeRow:
 		ntypes = NodeRowTypes
 	case TriggerScopeList:
-		ntypes = []string{"w-bookmarkStart"} // list item marked with main:id
+		ntypes = []string{"w-p"} // list items have w-p > w-pPr > w-numPr item
 	case TriggerScopeTable:
 		ntypes = []string{"w-tbl"}
 	case TriggerScopeSection:
@@ -182,8 +182,30 @@ func (p *Param) RunTrigger(xnode *xmlNode) {
 		return
 	}
 
+	isListItem, listID := n.IsListItem()
+
+	// Whole lists: special case
+	isListRemove := p.Trigger.Scope == TriggerScopeList                                   // :list
+	isListRemove = isListRemove || (isListItem && p.Trigger.Scope == TriggerScopeSection) // :section
+	if isListRemove && isListItem {
+		// find all list items as this
+		for _, wpNode := range n.parent.Nodes {
+			isitem, listid := wpNode.IsListItem()
+			if !isitem || listid != listID {
+				// color.Red("--- %s [%s]", wpNode, wpNode.AllContents())
+				continue
+			}
+			if p.Trigger.Command == TriggerCommandRemove {
+				wpNode.Nodes = nil
+				wpNode.delete()
+			}
+		}
+		return
+	}
+
+	// Simple cases
 	if p.Trigger.Command == TriggerCommandRemove {
-		// n.printTree("TRIGGER REMOVE")
+		// n.printTree("TRIGGER: " + p.Trigger.String() + " " + p.Trigger.Command)
 		n.Nodes = nil
 		n.delete()
 		return

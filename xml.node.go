@@ -17,10 +17,10 @@ var NodeSingleTypes = []string{"w-r", "w-t"}
 var NodeCellTypes = []string{"w-tc"}
 
 // NodeRowTypes - NB! sequence is important
-var NodeRowTypes = []string{"w-tr", "w-bookmarkStart"}
+var NodeRowTypes = []string{"w-tr", "w-p"}
 
 // NodeSectionTypes - NB! sequence is important
-var NodeSectionTypes = []string{"w-tbl", "w-bookmarkStart"}
+var NodeSectionTypes = []string{"w-tbl", "w-p"}
 
 type xmlNode struct {
 	XMLName xml.Name
@@ -74,6 +74,10 @@ func (xnode *xmlNode) WalkTree(depth int, fn func(int, *xmlNode)) {
 
 // Contents - return contents of this and all childs contents merge
 func (xnode *xmlNode) AllContents() []byte {
+	if xnode == nil || xnode.isDeleted {
+		return nil
+	}
+
 	buf := xnode.Content
 	xnode.Walk(func(n *xmlNode) {
 		buf = append(buf, n.Content...)
@@ -291,6 +295,11 @@ func (xnode *xmlNode) String() string {
 	}
 	s += fmt.Sprintf("-- %p -- ", xnode)
 	s += fmt.Sprintf("%s: ", xnode.Tag())
+
+	if isListItem, listID := xnode.IsListItem(); isListItem {
+		s += fmt.Sprintf("( List:%s ) ", listID)
+	}
+
 	s += fmt.Sprintf("[Content:%s]", xnode.Content)
 	s += fmt.Sprintf(" %3d", len(xnode.Nodes))
 	// s += fmt.Sprintf("[%s]", xnode.AllContents())
@@ -314,6 +323,7 @@ func (xnode *xmlNode) printTree(label string) {
 		s := "|"
 		s += strings.Repeat(" ", depth*4)
 
+		// tag
 		s += fmt.Sprintf("%-10s", n.XMLName.Local)
 		if xnode.isNew {
 			s = color.CyanString(s)
@@ -322,6 +332,7 @@ func (xnode *xmlNode) printTree(label string) {
 			s = color.HiRedString(s)
 		}
 
+		// pointers
 		s += fmt.Sprintf("|%p|", n)
 		sptr := fmt.Sprintf("|%p| ", n.parent)
 		if n.parent == nil {
@@ -329,9 +340,9 @@ func (xnode *xmlNode) printTree(label string) {
 		}
 		s += sptr
 
-		// if bytes.TrimSpace(n.Contents()) != nil {
-		// 	s += color.MagentaString(" (%s)", n.Contents())
-		// }
+		if isListItem, listID := n.IsListItem(); isListItem {
+			s += color.HiBlueString(" (List:%s) ", listID)
+		}
 
 		if bytes.TrimSpace(n.Content) != nil {
 			s += color.YellowString("[%s]", n.Content)
@@ -358,4 +369,64 @@ func (xnode *xmlNode) attrID() string {
 		}
 	}
 	return ""
+}
+
+// ^ > w-p > w-pPr > w-numPr > w-numId
+func (xnode *xmlNode) nodeBySelector(selector string) *xmlNode {
+	selector = strings.TrimSpace(selector)
+	selector = strings.Replace(selector, " ", "", -1)
+	tags := strings.Split(selector, ">")
+
+	for i, tag := range tags {
+		for _, n := range xnode.Nodes {
+			if n.Tag() == tag {
+				if len(tags[i:]) == 1 {
+					// color.HiGreen("FOUND: %s", tag)
+					return n
+				}
+
+				selector = strings.Join(tags[i:], ">")
+				// color.Green("NEXT: %s", selector)
+
+				return n.nodeBySelector(selector)
+			}
+		}
+	}
+
+	// color.Red("Selector not found: [%s]", selector)
+	return nil
+}
+
+// get attribute value
+func (xnode *xmlNode) Attr(key string) string {
+	for _, attr := range xnode.Attrs {
+		if attr.Name.Local == key {
+			return attr.Value
+		}
+	}
+
+	return ""
+}
+
+// w-p > w-pPr > w-numPr item
+func (xnode *xmlNode) IsListItem() (bool, string) {
+	if xnode.Tag() != "w-p" {
+		return false, ""
+	}
+
+	// Quick
+	if listID := xnode.Attr("list-id"); listID != "" {
+		return true, listID
+	}
+
+	// Raw method
+	numNode := xnode.nodeBySelector("w-pPr > w-numPr > w-numId")
+	if numNode == nil {
+		return false, ""
+	}
+
+	// Get list ID from attrs
+	var listID = numNode.Attr("val")
+
+	return true, listID
 }

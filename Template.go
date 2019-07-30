@@ -104,6 +104,58 @@ func (t *Template) fileToXMLStruct(fname string) *xmlNode {
 //      {{Users.1.Name}}
 //      {{Users.2.Name}}
 
+// Params  - replace template placeholders with params
+// "Hello {{ Name }}!"" --> "Hello World!""
+func (t *Template) Params(v interface{}) {
+	// t.params = collectParams("", v)
+	switch val := v.(type) {
+	case string:
+		t.params = JSONToParams([]byte(val))
+	case []byte:
+		t.params = JSONToParams(val)
+	default:
+		t.params = StructParams(val)
+	}
+
+	f := t.MainDocument() // TODO: loop all xml files
+	xnode := t.fileToXMLStruct(f.Name)
+
+	// Enchance some markup (removed when building XML in the end)
+	// so easier to find some element
+	t.enchanceMarkup(xnode)
+
+	// While formating docx sometimes same style node is split to
+	// multiple same style nodes and different content
+	// Merge them so placeholders are in the same node
+	t.fixBrokenPlaceholders(xnode)
+
+	// First try to replace all exact-match placeholders
+	// Do it before expand because it may expand unwanted placeholders
+	t.replaceSingleParams(xnode)
+
+	// Complex placeholders with more depth needs to be expanded
+	// for correct replace
+	t.expandPlaceholders(xnode)
+
+	// xnode.Walk(func(xn *xmlNode) {
+	// 	if xn.XMLName.Local == "w-tbl" {
+	// 		xn.printTree("BEFORE REPLACE")
+	// 	}
+	// })
+
+	t.replaceRowParams(xnode)
+	t.replaceInlineParams(xnode)
+	t.replaceSingleParams(xnode)
+
+	// // DEBUG:
+	// for _, p := range t.params {
+	// 	fmt.Printf("|| %-20s %v", p.Key, p.Value)
+	// }
+
+	// Save []bytes
+	t.modified[f.Name] = structToXMLBytes(xnode)
+}
+
 func (t *Template) expandPlaceholders(xnode *xmlNode) {
 	t.params.Walk(func(p *Param) {
 		if !p.IsSlice {
@@ -287,52 +339,29 @@ func (t *Template) replaceSingleParams(xnode *xmlNode) {
 	})
 }
 
-// Params  - replace template placeholders with params
-// "Hello {{ Name }}!"" --> "Hello World!""
-func (t *Template) Params(v interface{}) {
-	// t.params = collectParams("", v)
-	switch val := v.(type) {
-	case string:
-		t.params = JSONToParams([]byte(val))
-	case []byte:
-		t.params = JSONToParams(val)
-	default:
-		t.params = StructParams(val)
-	}
+// Enchance some markup (removed when building XML in the end)
+// so easier to find some element
+func (t *Template) enchanceMarkup(xnode *xmlNode) {
 
-	f := t.MainDocument() // TODO: loop all xml files
-	xnode := t.fileToXMLStruct(f.Name)
+	// List items - add list item node `w-p` attributes
+	// so it's recognized as listitem
+	xnode.Walk(func(n *xmlNode) {
+		if n.Tag() != "w-p" {
+			return
+		}
 
-	// While formating docx sometimes same style node is split to
-	// multiple same style nodes and different content
-	// Merge them so placeholders are in the same node
-	t.fixBrokenPlaceholders(xnode)
+		isListItem, listID := n.IsListItem()
+		if !isListItem {
+			return
+		}
 
-	// First try to replace all exact-match placeholders
-	// Do it before expand because it may expand unwanted placeholders
-	t.replaceSingleParams(xnode)
+		// n.XMLName.Local = "w-item"
+		n.Attrs = append(n.Attrs, xml.Attr{
+			Name:  xml.Name{Local: "list-id"},
+			Value: listID,
+		})
 
-	// Complex placeholders with more depth needs to be expanded
-	// for correct replace
-	t.expandPlaceholders(xnode)
-
-	// xnode.Walk(func(xn *xmlNode) {
-	// 	if xn.XMLName.Local == "w-tbl" {
-	// 		xn.printTree("BEFORE REPLACE")
-	// 	}
-	// })
-
-	t.replaceRowParams(xnode)
-	t.replaceInlineParams(xnode)
-	t.replaceSingleParams(xnode)
-
-	// // DEBUG:
-	// for _, p := range t.params {
-	// 	fmt.Printf("|| %-20s %v", p.Key, p.Value)
-	// }
-
-	// Save []bytes
-	t.modified[f.Name] = structToXMLBytes(xnode)
+	})
 }
 
 // Fix broken placeholders by merging "w-t" nodes.
@@ -356,6 +385,10 @@ func (t *Template) fixBrokenPlaceholders(xnode *xmlNode) {
 			if wrNode.XMLName.Local != "w-r" {
 				return
 			}
+
+			// if wrNode.index() > 0 {
+			// 	color.Red("%s%s", wrNode.parent.Nodes[wrNode.index()-1].AllContents(), color.HiRedString("%s", wrNode.AllContents()))
+			// }
 
 			// have end but doesn't have beginning in the same node
 			// NOTE: parent "w-p" should contain broken placeholder end "}}"
