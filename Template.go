@@ -138,6 +138,7 @@ func (t *Template) Params(v interface{}) {
 	t.expandPlaceholders(xnode)
 
 	t.replaceRowParams(xnode)
+
 	t.replaceInlineParams(xnode)
 	t.replaceSingleParams(xnode)
 
@@ -145,6 +146,16 @@ func (t *Template) Params(v interface{}) {
 	// Placeholders with trigger `:empty` must be triggered
 	// otherwise they are left
 	t.triggerMissingParams(xnode)
+
+	// xnode.Walk(func(n *xmlNode) {
+	// 	if is, _ := n.IsListItem(); is {
+	// 		n.Walk(func(wt *xmlNode) {
+	// 			if wt.Tag() == "w-t" {
+	// 				color.Yellow("%s", wt)
+	// 			}
+	// 		})
+	// 	}
+	// })
 
 	// Save []bytes
 	t.modified[f.Name] = structToXMLBytes(xnode)
@@ -162,7 +173,7 @@ func (t *Template) triggerMissingParams(xnode *xmlNode) {
 		}
 
 		p := NewParamFromRaw(n.AllContents())
-		if p.Trigger != nil {
+		if p != nil && p.Trigger != nil {
 			triggerParams = append(triggerParams, p)
 		}
 	})
@@ -216,10 +227,6 @@ func (t *Template) expandPlaceholders(xnode *xmlNode) {
 						}
 						n.Content = bytes.Replace(n.Content, []byte(prefix), []byte(p2.PlaceholderPrefix()), -1) // w-t
 						n.haveParam = true
-						// n.parent.Content = nil                                                                   // w-r
-						//
-						// color.Magenta("\t clone: %s", n)
-						// color.HiMagenta("\t clone: %s -- %s", n.Content, n.Contents())
 					})
 				}
 				nrow.delete()
@@ -242,7 +249,6 @@ func (t *Template) expandPlaceholders(xnode *xmlNode) {
 // {{Numbers}}
 func (t *Template) replaceRowParams(xnode *xmlNode) {
 	xnode.Walk(func(nrow *xmlNode) {
-
 		if !nrow.isRowElement() || !nrow.HaveParams() {
 			return
 		}
@@ -253,23 +259,49 @@ func (t *Template) replaceRowParams(xnode *xmlNode) {
 				// Allow only slice params here
 				return
 			}
+			contents := nrow.AllContents()
+
+			// Trigger is confused for inline separator
+			// fix: remove trigger before trying to deal with inline replace
+			trp := NewParamFromRaw(contents)
+			if trp != nil && trp.Trigger != nil {
+				p.Trigger = trp.Trigger
+			}
+
 			// Do not check in nrow.Contents()
 			// because it's checks merged nodes plaintext
 			// But replacer works on every node separately
-			isValidKey := nrow.AnyChildContains([]byte(p.Placeholder()))
-			isValidKey = isValidKey || nrow.AnyChildContains([]byte(p.PlaceholderKey()))
+			isValidKey := bytes.Contains(contents, []byte(p.Placeholder())) //nrow.AnyChildContains([]byte(p.Placeholder()))
+			isValidKey = isValidKey || bytes.Contains(contents, []byte(p.PlaceholderKey()))
+			if p.Trigger != nil {
+				isValidKey = bytes.Contains(contents, []byte(p.PlaceholderWithTrigger())) //nrow.AnyChildContains([]byte(p.Placeholder()))
+				isValidKey = isValidKey || bytes.Contains(contents, []byte(p.PlaceholderKeyWithTrigger()))
+			}
 
 			if !isValidKey {
 				// specific placeholder not found
 				return
 			}
+
 			// Add new xml nodes for every param sub-param
 			for _, p2 := range p.Params {
 				// fmt.Printf("%30s = %v", p.Placeholder(), p2.Value)
 				nnew := nrow.cloneAndAppend()
 				nnew.Walk(func(nnew *xmlNode) {
+					p2.Trigger = p.Trigger
+
 					nnew.Content = bytes.Replace(nnew.Content, []byte(p.Placeholder()), []byte(p2.Value), -1)
 					nnew.Content = bytes.Replace(nnew.Content, []byte(p.PlaceholderKey()), []byte(p2.Key), -1)
+
+					if p.Trigger != nil {
+						buf := nnew.Content
+						nnew.Content = bytes.Replace(nnew.Content, []byte(p.PlaceholderWithTrigger()), []byte(p2.Value), -1)
+						nnew.Content = bytes.Replace(nnew.Content, []byte(p.PlaceholderKeyWithTrigger()), []byte(p2.Key), -1)
+						if bytes.Compare(buf, nnew.Content) != 0 {
+							p2.RunTrigger(nnew)
+							p2.Trigger = nil
+						}
+					}
 				})
 
 			}
@@ -286,6 +318,9 @@ func (t *Template) replaceRowParams(xnode *xmlNode) {
 func (t *Template) replaceInlineParams(xnode *xmlNode) {
 	xnode.Walk(func(n *xmlNode) {
 		if !n.HaveParams() {
+			return
+		}
+		if !n.isRowElement() {
 			return
 		}
 		contents := n.AllContents()

@@ -24,6 +24,8 @@ type Param struct {
 	AbsoluteKey string // Users.1.Name
 	CompactKey  string // Users.Name
 
+	Separator string // {{Usernames SEPERATOR}}
+
 	Trigger *ParamTrigger
 }
 
@@ -47,6 +49,7 @@ func NewParamFromRaw(raw []byte) *Param {
 	}
 
 	p := NewParam(string(matches[0][2]))
+	p.Separator = strings.TrimSpace(string(matches[0][3]))
 	p.Trigger = NewParamTrigger(matches[0][4])
 	return p
 }
@@ -94,11 +97,17 @@ func (p *Param) PlaceholderKeyPrefix() string {
 
 // PlaceholderWithTrigger .. {{Key :empty:remove:list}}
 func (p *Param) PlaceholderWithTrigger() string {
+	if p.Trigger == nil {
+		return p.Placeholder()
+	}
 	return "{{" + p.AbsoluteKey + " " + p.Trigger.String() + "}}"
 }
 
 // PlaceholderKeyWithTrigger .. {{#Key :empty:remove:list}}
 func (p *Param) PlaceholderKeyWithTrigger() string {
+	if p.Trigger == nil {
+		return p.PlaceholderKey()
+	}
 	return "{{#" + p.AbsoluteKey + " " + p.Trigger.String() + "}}"
 }
 
@@ -171,6 +180,9 @@ func (p *Param) extractTriggerFrom(buf []byte) *ParamTrigger {
 
 // RunTrigger - execute trigger
 func (p *Param) RunTrigger(xnode *xmlNode) {
+	if p == nil || p.Trigger == nil {
+		return
+	}
 
 	if p.Trigger.On == TriggerOnEmpty && p.Value != "" {
 		return
@@ -239,6 +251,7 @@ func (p *Param) RunTrigger(xnode *xmlNode) {
 // String - compact debug information as string
 func (p *Param) String() string {
 	s := fmt.Sprintf("%34s=%-20s", p.AbsoluteKey, p.Value)
+	s += fmt.Sprintf("\tSeparator[%s]", p.Separator)
 	s += fmt.Sprintf("\tTrigger[%s]", p.Trigger)
 	return s
 }

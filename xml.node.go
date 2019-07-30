@@ -180,6 +180,7 @@ func (xnode *xmlNode) cloneAndAppend() *xmlNode {
 
 	// new copy node
 	nnew := xnode.clone() // parent cleaned
+	nnew.isDeleted = false
 	nnew.isNew = true
 
 	// Find node index in parent hierarchy and chose next index as copy place
@@ -215,6 +216,7 @@ func (xnode *xmlNode) clone() *xmlNode {
 	xnodeCopy := &xmlNode{}
 	*xnodeCopy = *xnode
 	xnodeCopy.Nodes = nil
+	xnodeCopy.isDeleted = false
 	xnodeCopy.isNew = true
 
 	for _, n := range xnode.Nodes {

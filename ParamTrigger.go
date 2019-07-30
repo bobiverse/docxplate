@@ -123,6 +123,9 @@ func (tr *ParamTrigger) isValid() bool {
 
 // String - return rebuilt trigger string
 func (tr *ParamTrigger) String() string {
+	if tr == nil {
+		return ""
+	}
 	s := fmt.Sprintf("%s%s%s", tr.On, tr.Command, tr.Scope)
 	return s
 }
