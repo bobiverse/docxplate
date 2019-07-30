@@ -28,9 +28,9 @@ func TestPlaceholders(t *testing.T) {
 		Age:       27,
 		Nicknames: []string{"amber", "", "AL", "ice", "", "", "", "", "", "", "", ""},
 		Friends: []*User{
-			&User{Name: "", Age: 999},
 			&User{Name: "Bob", Age: 28},
 			&User{Name: "Cecilia", Age: 29},
+			&User{Name: "", Age: 999},
 			&User{Name: "", Age: 999},
 			&User{Name: "Den", Age: 30},
 			&User{Name: "", Age: 999},
@@ -57,6 +57,21 @@ func TestPlaceholders(t *testing.T) {
 		// Test param setup byu different input types
 		for _, inType := range inputs {
 			tdoc, _ := docxplate.OpenTemplate("test-data/" + fname)
+
+			plaintext := tdoc.Plaintext()
+			params := []string{
+				"{{Name}}",
+				"{{Friends.1.Name}}",
+				"{{Friends.Name :empty",
+				"{{Friends.Age}}",
+			}
+			for _, p := range params {
+				if !strings.Contains(plaintext, p) {
+					t.Fatalf("Param `%s` should be found in plaintext: \n\n%s", p, plaintext)
+				}
+			}
+
+			// Run
 			switch inType {
 			case "struct":
 				buf, _ := json.Marshal(user)
@@ -65,7 +80,7 @@ func TestPlaceholders(t *testing.T) {
 				tdoc.Params(user)
 			}
 
-			plaintext := tdoc.Plaintext()
+			plaintext = tdoc.Plaintext()
 			tdoc.ExportDocx("test-data/~test-" + inType + ".docx")
 
 			// Does non-replacable placeholders still exists

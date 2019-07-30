@@ -165,6 +165,10 @@ func (t *Template) Params(v interface{}) {
 // Placeholders with trigger `:empty` must be triggered
 // otherwise they are left
 func (t *Template) triggerMissingParams(xnode *xmlNode) {
+	if t.params == nil {
+		return
+	}
+
 	var triggerParams ParamList
 
 	xnode.Walk(func(n *xmlNode) {
@@ -581,7 +585,7 @@ func (t *Template) Plaintext() string {
 	xnode := t.bytesToXMLStruct(t.modified[f.Name])
 
 	xnode.Walk(func(n *xmlNode) {
-		if n.XMLName.Local != "w-r" {
+		if n.Tag() != "w-p" {
 			return
 		}
 
