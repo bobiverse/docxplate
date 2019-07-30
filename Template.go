@@ -137,25 +137,52 @@ func (t *Template) Params(v interface{}) {
 	// for correct replace
 	t.expandPlaceholders(xnode)
 
-	// xnode.Walk(func(xn *xmlNode) {
-	// 	if xn.XMLName.Local == "w-tbl" {
-	// 		xn.printTree("BEFORE REPLACE")
-	// 	}
-	// })
-
 	t.replaceRowParams(xnode)
 	t.replaceInlineParams(xnode)
 	t.replaceSingleParams(xnode)
 
-	// // DEBUG:
-	// for _, p := range t.params {
-	// 	fmt.Printf("|| %-20s %v", p.Key, p.Value)
-	// }
+	// Collect placeholders with trigger but unset in `t.params`
+	// Placeholders with trigger `:empty` must be triggered
+	// otherwise they are left
+	t.triggerMissingParams(xnode)
 
 	// Save []bytes
 	t.modified[f.Name] = structToXMLBytes(xnode)
 }
 
+// Collect and trigger placeholders with trigger but unset in `t.params`
+// Placeholders with trigger `:empty` must be triggered
+// otherwise they are left
+func (t *Template) triggerMissingParams(xnode *xmlNode) {
+	var triggerParams ParamList
+
+	xnode.Walk(func(n *xmlNode) {
+		if !n.isRowElement() || !n.HaveParams() {
+			return
+		}
+
+		p := NewParamFromRaw(n.AllContents())
+		if p.Trigger != nil {
+			triggerParams = append(triggerParams, p)
+		}
+	})
+
+	if triggerParams == nil {
+		return
+	}
+
+	// make sure not to "tint" original t.params
+	_params := t.params
+	t.params = triggerParams
+
+	// do stuff only with filtered params
+	t.replaceSingleParams(xnode)
+
+	// back to original
+	t.params = _params
+}
+
+// Expand complex placeholders
 func (t *Template) expandPlaceholders(xnode *xmlNode) {
 	t.params.Walk(func(p *Param) {
 		if !p.IsSlice {

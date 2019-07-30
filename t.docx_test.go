@@ -200,8 +200,6 @@ func TestOnLists(t *testing.T) {
 			t.Fatalf("Some items not removed: \n\n%s", plaintext)
 		}
 
-		// fmt.Println(plaintext)
-
 	}
 
 }

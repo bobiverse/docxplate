@@ -3,12 +3,13 @@ package docxplate
 import (
 	"bytes"
 	"fmt"
+	"regexp"
 	"strings"
 )
 
 // ParamPattern - regex pattern to identify params
 // const ParamPattern = `{{(#|)[\w\.]+?(| .| )+?}}`
-const ParamPattern = `{{(#|)[\w\.]+?(| .| +)(|(:[a-z]+)+)+?}}`
+const ParamPattern = `{{(#|)([\w\.]+?)(| .| +)(|(:[a-z]+)+)+?}}`
 
 // Param ..
 type Param struct {
@@ -33,6 +34,20 @@ func NewParam(key interface{}) *Param {
 	}
 	p.AbsoluteKey = p.Key
 	p.CompactKey = p.Key
+	return p
+}
+
+// NewParamFromRaw ..
+func NewParamFromRaw(raw []byte) *Param {
+	// extract from raw contents
+	re := regexp.MustCompile(ParamPattern)
+	matches := re.FindAllSubmatch(raw, -1)
+	if matches == nil || matches[0] == nil {
+		return nil
+	}
+
+	p := NewParam(string(matches[0][2]))
+	p.Trigger = NewParamTrigger(matches[0][4])
 	return p
 }
 
