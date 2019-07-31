@@ -83,19 +83,6 @@ func TestPlaceholders(t *testing.T) {
 			plaintext = tdoc.Plaintext()
 			tdoc.ExportDocx("test-data/~test-" + inType + ".docx")
 
-			// Does non-replacable placeholders still exists
-			if !strings.Contains(plaintext, "{{NotReplacable}}") {
-				t.Fatalf("Param {{NotReplacable}} must be left: \n\n%s\n\n", plaintext)
-			}
-			plaintext = strings.Replace(plaintext, "{{NotReplacable}}", "", -1)
-
-			// All valid params replaced
-			leftParams := strings.Contains(plaintext, "{{")
-			leftParams = leftParams && strings.Contains(plaintext, "}}")
-			if leftParams {
-				t.Fatalf("Some params not replaced: \n\n%s", tdoc.Plaintext())
-			}
-
 			// Check for "must remove" text
 			removedTexts := []string{
 				":empty",
@@ -137,10 +124,11 @@ func TestPlaceholders(t *testing.T) {
 				"{{Name}}",
 				"{{Friends.1.Name}}",
 				"{{NotReplacable}}",
+				"{{NotReplacable , }}",
 			}
 			for _, s := range mustBeMissing {
 				if !strings.Contains(notreplacedPlaceholdersStr, s) {
-					t.Fatalf("Placeholder [%s] must be inPlaceholders() slice. Found: %s", s, notreplacedPlaceholdersStr)
+					t.Fatalf("Placeholder [%s] must be inPlaceholders() slice. Found: %s\n\n%s\n\n", s, notreplacedPlaceholdersStr, plaintext)
 				}
 				if !strings.Contains(plaintext, s) {
 					t.Fatalf("Text [%s] must be found: \n\n%s", s, plaintext)

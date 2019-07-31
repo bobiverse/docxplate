@@ -8,8 +8,7 @@ import (
 )
 
 // ParamPattern - regex pattern to identify params
-// const ParamPattern = `{{(#|)[\w\.]+?(| .| )+?}}`
-const ParamPattern = `{{(#|)([\w\.]+?)(| .| +)(|(:[a-z]+)+)+?}}`
+const ParamPattern = `{{(#|)([\w\.]+?)(| .+?)(| [:a-z]+?)}}`
 
 // Param ..
 type Param struct {
