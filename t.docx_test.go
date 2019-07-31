@@ -130,15 +130,20 @@ func TestPlaceholders(t *testing.T) {
 			tdoc, _ = docxplate.OpenTemplate("test-data/" + fname)
 			tdoc.Params(struct{ Dummy string }{Dummy: "never"})
 			tdoc.ExportDocx("test-data/~test-" + inType + ".docx")
+			notreplacedPlaceholdersStr := strings.Join(tdoc.Placeholders(), ", ")
+
 			plaintext = tdoc.Plaintext()
-			mandatoryTexts := []string{
+			mustBeMissing := []string{
 				"{{Name}}",
 				"{{Friends.1.Name}}",
 				"{{NotReplacable}}",
 			}
-			for _, s := range mandatoryTexts {
+			for _, s := range mustBeMissing {
+				if !strings.Contains(notreplacedPlaceholdersStr, s) {
+					t.Fatalf("Placeholder [%s] must be inPlaceholders() slice. Found: %s", s, notreplacedPlaceholdersStr)
+				}
 				if !strings.Contains(plaintext, s) {
-					t.Fatalf("Text [%s must be found: \n\n%s", s, plaintext)
+					t.Fatalf("Text [%s] must be found: \n\n%s", s, plaintext)
 				}
 			}
 		}
