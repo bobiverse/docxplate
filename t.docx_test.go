@@ -85,7 +85,7 @@ func TestPlaceholders(t *testing.T) {
 
 			// Does non-replacable placeholders still exists
 			if !strings.Contains(plaintext, "{{NotReplacable}}") {
-				t.Fatalf("Param {{NotReplacable}} be left")
+				t.Fatalf("Param {{NotReplacable}} must be left: \n\n%s\n\n", plaintext)
 			}
 			plaintext = strings.Replace(plaintext, "{{NotReplacable}}", "", -1)
 

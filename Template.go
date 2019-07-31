@@ -131,7 +131,7 @@ func (t *Template) Params(v interface{}) {
 
 	// First try to replace all exact-match placeholders
 	// Do it before expand because it may expand unwanted placeholders
-	t.replaceSingleParams(xnode)
+	t.replaceSingleParams(xnode, false)
 
 	// Complex placeholders with more depth needs to be expanded
 	// for correct replace
@@ -140,7 +140,7 @@ func (t *Template) Params(v interface{}) {
 	t.replaceRowParams(xnode)
 
 	t.replaceInlineParams(xnode)
-	t.replaceSingleParams(xnode)
+	t.replaceSingleParams(xnode, false)
 
 	// Collect placeholders with trigger but unset in `t.params`
 	// Placeholders with trigger `:empty` must be triggered
@@ -191,7 +191,7 @@ func (t *Template) triggerMissingParams(xnode *xmlNode) {
 	t.params = triggerParams
 
 	// do stuff only with filtered params
-	t.replaceSingleParams(xnode)
+	t.replaceSingleParams(xnode, true)
 
 	// back to original
 	t.params = _params
@@ -375,7 +375,7 @@ func (t *Template) replaceInlineParams(xnode *xmlNode) {
 		})
 	})
 }
-func (t *Template) replaceSingleParams(xnode *xmlNode) {
+func (t *Template) replaceSingleParams(xnode *xmlNode, triggerParamOnly bool) {
 	xnode.Walk(func(n *xmlNode) {
 		if n == nil || n.isDeleted {
 			return
@@ -394,6 +394,10 @@ func (t *Template) replaceSingleParams(xnode *xmlNode) {
 					n.Content = bytes.Replace(n.Content, []byte(p.PlaceholderWithTrigger()), []byte(p.Value), -1)
 					n.Content = bytes.Replace(n.Content, []byte(p.PlaceholderKeyWithTrigger()), []byte(p.Key), -1)
 					p.RunTrigger(n)
+					return
+				}
+
+				if triggerParamOnly {
 					return
 				}
 
@@ -562,7 +566,6 @@ func (t *Template) Placeholders() []string {
 
 	plaintext := t.Plaintext()
 
-	// re := regexp.MustCompile("{{(#|)([a-zA-Z0-9_\\-\\.])+( .|)}}")
 	re := regexp.MustCompile(ParamPattern)
 	arr = re.FindAllString(plaintext, -1)
 
