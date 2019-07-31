@@ -103,7 +103,6 @@ func TestPlaceholders(t *testing.T) {
 				"must be removed",
 				"999 y/o",
 			}
-
 			for _, s := range removedTexts {
 				if strings.Contains(plaintext, s) {
 					t.Fatalf("Text `%s` must be removed: \n%s", s, tdoc.Plaintext())
@@ -126,7 +125,22 @@ func TestPlaceholders(t *testing.T) {
 				}
 			}
 
-			// fmt.Println(plaintext)
+			// Test empty struct
+			// non-empty-trigger placeholders must stay as is
+			tdoc, _ = docxplate.OpenTemplate("test-data/" + fname)
+			tdoc.Params(struct{ Dummy string }{Dummy: "never"})
+			tdoc.ExportDocx("test-data/~test-" + inType + ".docx")
+			plaintext = tdoc.Plaintext()
+			mandatoryTexts := []string{
+				"{{Name}}",
+				"{{Friends.1.Name}}",
+				"{{NotReplacable}}",
+			}
+			for _, s := range mandatoryTexts {
+				if !strings.Contains(plaintext, s) {
+					t.Fatalf("Text [%s must be found: \n\n%s", s, plaintext)
+				}
+			}
 		}
 	}
 
