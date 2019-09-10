@@ -1,6 +1,5 @@
 test-data/EXPORTED.docx
 
-syntax: glob
 ~*
 *~
 .*
