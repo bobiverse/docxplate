@@ -6,31 +6,31 @@ Generate document from .docx template file.
 *Click on image to see larger.*
 [![docxplate preview](./images/preview.png)](/images/preview.png)
 
+```go
+// Using this data for all examples below
+type User struct {
+	Name      string
+	Age       int
+	Nicknames []string
+	Friends   []*User
+}
 
-    // Using this data for all examples below
-    type User struct {
-		Name      string
-		Age       int
-		Nicknames []string
-		Friends   []*User
-	}
+user := User{
+	Name:      "Alice",
+	Age:       27,
+	Nicknames: []string{"amber", "AL", "ice"},
+	Friends: []*User{
+		&User{Name: "Bob", Age: 28},
+		&User{Name: "Cecilia", Age: 29},
+		&User{Name: "Den", Age: 30},
+	},
+}
 
-	user := User{
-		Name:      "Alice",
-		Age:       27,
-		Nicknames: []string{"amber", "AL", "ice"},
-		Friends: []*User{
-			&User{Name: "Bob", Age: 28},
-			&User{Name: "Cecilia", Age: 29},
-			&User{Name: "Den", Age: 30},
-		},
-	}
-
-    // Template to document
-    tdoc, _ := docxplate.OpenTemplate("template.docx")
-    tdoc.Params(user)
-    tdoc.ExportDocx("MyDoc.docx")
-
+// Template to document
+tdoc, _ := docxplate.OpenTemplate("template.docx")
+tdoc.Params(user)
+tdoc.ExportDocx("MyDoc.docx")
+```
 
 ### Struct as data input
 `Hello, {{Name}}!` --> `Hello, Alice!`  
