@@ -401,6 +401,11 @@ func (t *Template) replaceSingleParams(xnode *xmlNode, triggerParamOnly bool) {
 					return
 				}
 
+				if p.parent != nil {
+					n.Content = bytes.Replace(n.Content, []byte(p.parent.Placeholder()), []byte(p.Value), -1)
+					n.Content = bytes.Replace(n.Content, []byte(p.parent.PlaceholderKey()), []byte(p.Key), -1)
+				}
+
 				// fmt.Printf("%30s --> %+v", p.Placeholder(), p.Value)
 				n.Content = bytes.Replace(n.Content, []byte(p.Placeholder()), []byte(p.Value), -1)
 				n.Content = bytes.Replace(n.Content, []byte(p.PlaceholderKey()), []byte(p.Key), -1)
