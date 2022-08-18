@@ -5,4 +5,5 @@ test-data/EXPORTED.docx
 .*
 *.orig
 
+run-all-tests.sh 
 
