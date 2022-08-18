@@ -5,12 +5,22 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
+	"log"
 )
 
 func readerBytes(rdr io.ReadCloser) []byte {
 	buf := new(bytes.Buffer)
-	buf.ReadFrom(rdr)
-	rdr.Close()
+
+	if _, err := buf.ReadFrom(rdr); err != nil {
+		log.Printf("can't read bytes: %s", err)
+		return nil
+	}
+
+	if err := rdr.Close(); err != nil {
+		log.Printf("can't close reader: %s", err)
+		return nil
+	}
+
 	return buf.Bytes()
 }
 
@@ -23,14 +33,14 @@ func structToXMLBytes(v interface{}) []byte {
 		return nil
 	}
 
-	// Fix xmlns representation after marshal
-	buf = bytes.Replace(buf, []byte(` xmlns:_xmlns="xmlns"`), []byte(""), -1)
-	buf = bytes.Replace(buf, []byte(`_xmlns:`), []byte("xmlns:"), -1)
+	// This is fixing `xmlns` attribute representation after marshal
+	buf = bytes.ReplaceAll(buf, []byte(` xmlns:_xmlns="xmlns"`), []byte(""))
+	buf = bytes.ReplaceAll(buf, []byte(`_xmlns:`), []byte("xmlns:"))
 
 	// xml decoder doesnt support <w:t so using placeholder with "w-" (<w-t)
 	// Or you have solution?
-	buf = bytes.Replace(buf, []byte("<w-"), []byte("<w:"), -1)
-	buf = bytes.Replace(buf, []byte("</w-"), []byte("</w:"), -1)
+	buf = bytes.ReplaceAll(buf, []byte("<w-"), []byte("<w:"))
+	buf = bytes.ReplaceAll(buf, []byte("</w-"), []byte("</w:"))
 
 	// buf = bytes.Replace(buf, []byte("w-item"), []byte("w-p"), -1)
 

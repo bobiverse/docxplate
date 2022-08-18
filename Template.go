@@ -62,8 +62,8 @@ func (t *Template) MainDocument() *zip.File {
 func (t *Template) bytesToXMLStruct(buf []byte) *xmlNode {
 	// Do not strip <w: entiraly, but keep reference as w-t
 	// So any string without w: would stay same, but all w- will be replaced again
-	buf = bytes.Replace(buf, []byte("<w:"), []byte("<w-"), -1)
-	buf = bytes.Replace(buf, []byte("</w:"), []byte("</w-"), -1)
+	buf = bytes.ReplaceAll(buf, []byte("<w:"), []byte("<w-"))
+	buf = bytes.ReplaceAll(buf, []byte("</w:"), []byte("</w-"))
 
 	xdocNode := &xmlNode{}
 	if err := xml.Unmarshal(buf, &xdocNode); err != nil {
@@ -229,7 +229,7 @@ func (t *Template) expandPlaceholders(xnode *xmlNode) {
 						if !inSlice(n.XMLName.Local, []string{"w-t"}) {
 							return
 						}
-						n.Content = bytes.Replace(n.Content, []byte(prefix), []byte(p2.PlaceholderPrefix()), -1) // w-t
+						n.Content = bytes.ReplaceAll(n.Content, []byte(prefix), []byte(p2.PlaceholderPrefix())) // w-t
 						n.haveParam = true
 					})
 				}
@@ -265,8 +265,8 @@ func (t *Template) replaceRowParams(xnode *xmlNode) {
 			}
 			contents := nrow.AllContents()
 
-			// Trigger is confused for inline separator
-			// fix: remove trigger before trying to deal with inline replace
+			// Trigger is confused for inline separator fixing it
+			// by removing trigger before trying to deal with inline replace
 			trp := NewParamFromRaw(contents)
 			if trp != nil && trp.Trigger != nil {
 				p.Trigger = trp.Trigger
@@ -275,10 +275,10 @@ func (t *Template) replaceRowParams(xnode *xmlNode) {
 			// Do not check in nrow.Contents()
 			// because it's checks merged nodes plaintext
 			// But replacer works on every node separately
-			isValidKey := bytes.Contains(contents, []byte(p.Placeholder())) //nrow.AnyChildContains([]byte(p.Placeholder()))
+			isValidKey := bytes.Contains(contents, []byte(p.Placeholder())) // nrow.AnyChildContains([]byte(p.Placeholder()))
 			isValidKey = isValidKey || bytes.Contains(contents, []byte(p.PlaceholderKey()))
 			if p.Trigger != nil {
-				isValidKey = bytes.Contains(contents, []byte(p.PlaceholderWithTrigger())) //nrow.AnyChildContains([]byte(p.Placeholder()))
+				isValidKey = bytes.Contains(contents, []byte(p.PlaceholderWithTrigger())) // nrow.AnyChildContains([]byte(p.Placeholder()))
 				isValidKey = isValidKey || bytes.Contains(contents, []byte(p.PlaceholderKeyWithTrigger()))
 			}
 
@@ -294,14 +294,14 @@ func (t *Template) replaceRowParams(xnode *xmlNode) {
 				nnew.Walk(func(nnew *xmlNode) {
 					p2.Trigger = p.Trigger
 
-					nnew.Content = bytes.Replace(nnew.Content, []byte(p.Placeholder()), []byte(p2.Value), -1)
-					nnew.Content = bytes.Replace(nnew.Content, []byte(p.PlaceholderKey()), []byte(p2.Key), -1)
+					nnew.Content = bytes.ReplaceAll(nnew.Content, []byte(p.Placeholder()), []byte(p2.Value))
+					nnew.Content = bytes.ReplaceAll(nnew.Content, []byte(p.PlaceholderKey()), []byte(p2.Key))
 
 					if p.Trigger != nil {
 						buf := nnew.Content
-						nnew.Content = bytes.Replace(nnew.Content, []byte(p.PlaceholderWithTrigger()), []byte(p2.Value), -1)
-						nnew.Content = bytes.Replace(nnew.Content, []byte(p.PlaceholderKeyWithTrigger()), []byte(p2.Key), -1)
-						if bytes.Compare(buf, nnew.Content) != 0 {
+						nnew.Content = bytes.ReplaceAll(nnew.Content, []byte(p.PlaceholderWithTrigger()), []byte(p2.Value))
+						nnew.Content = bytes.ReplaceAll(nnew.Content, []byte(p.PlaceholderKeyWithTrigger()), []byte(p2.Key))
+						if !bytes.Equal(buf, nnew.Content) {
 							p2.RunTrigger(nnew)
 							p2.Trigger = nil
 						}
@@ -362,12 +362,12 @@ func (t *Template) replaceInlineParams(xnode *xmlNode) {
 					n.Walk(func(n *xmlNode) {
 						// Replace with new value and add same placeholder at the end
 						// so we can replace next param
-						n.Content = bytes.Replace(n.Content, []byte(placeholder), []byte(p2.Value+sep+placeholder), -1)
+						n.Content = bytes.ReplaceAll(n.Content, []byte(placeholder), []byte(p2.Value+sep+placeholder))
 					})
 				}
 				// Remove placeholder so nobody replaces again this
 				n.Walk(func(n *xmlNode) {
-					n.Content = bytes.Replace(n.Content, []byte(sep+placeholder), nil, -1)
+					n.Content = bytes.ReplaceAll(n.Content, []byte(sep+placeholder), nil)
 				})
 
 			}
@@ -381,7 +381,7 @@ func (t *Template) replaceSingleParams(xnode *xmlNode, triggerParamOnly bool) {
 			return
 		}
 
-		if bytes.Index(n.Content, []byte("{{")) >= 0 {
+		if bytes.Contains(n.Content, []byte("{{")) {
 			// Try to replace on node that contains possible placeholder
 			t.params.Walk(func(p *Param) {
 				if p.IsSlice {
@@ -391,8 +391,8 @@ func (t *Template) replaceSingleParams(xnode *xmlNode, triggerParamOnly bool) {
 
 				// Trigger: does placeholder have trigger
 				if p.extractTriggerFrom(n.Content) != nil {
-					n.Content = bytes.Replace(n.Content, []byte(p.PlaceholderWithTrigger()), []byte(p.Value), -1)
-					n.Content = bytes.Replace(n.Content, []byte(p.PlaceholderKeyWithTrigger()), []byte(p.Key), -1)
+					n.Content = bytes.ReplaceAll(n.Content, []byte(p.PlaceholderWithTrigger()), []byte(p.Value))
+					n.Content = bytes.ReplaceAll(n.Content, []byte(p.PlaceholderKeyWithTrigger()), []byte(p.Key))
 					p.RunTrigger(n)
 					return
 				}
@@ -402,13 +402,13 @@ func (t *Template) replaceSingleParams(xnode *xmlNode, triggerParamOnly bool) {
 				}
 
 				if p.parent != nil {
-					n.Content = bytes.Replace(n.Content, []byte(p.parent.Placeholder()), []byte(p.Value), -1)
-					n.Content = bytes.Replace(n.Content, []byte(p.parent.PlaceholderKey()), []byte(p.Key), -1)
+					n.Content = bytes.ReplaceAll(n.Content, []byte(p.parent.Placeholder()), []byte(p.Value))
+					n.Content = bytes.ReplaceAll(n.Content, []byte(p.parent.PlaceholderKey()), []byte(p.Key))
 				}
 
 				// fmt.Printf("%30s --> %+v", p.Placeholder(), p.Value)
-				n.Content = bytes.Replace(n.Content, []byte(p.Placeholder()), []byte(p.Value), -1)
-				n.Content = bytes.Replace(n.Content, []byte(p.PlaceholderKey()), []byte(p.Key), -1)
+				n.Content = bytes.ReplaceAll(n.Content, []byte(p.Placeholder()), []byte(p.Value))
+				n.Content = bytes.ReplaceAll(n.Content, []byte(p.PlaceholderKey()), []byte(p.Key))
 			})
 		}
 	})
@@ -439,7 +439,7 @@ func (t *Template) enchanceMarkup(xnode *xmlNode) {
 	})
 }
 
-// Fix broken placeholders by merging "w-t" nodes.
+// This func is fixing broken placeholders by merging "w-t" nodes.
 // "w-p" (Record) can hold multiple "w-r". And "w-r" holts "w-t" node
 // -
 // If these nodes not fixed than params replace can not be done as
@@ -527,8 +527,13 @@ func (t *Template) Bytes() ([]byte, error) {
 			continue
 		}
 		fbuf := new(bytes.Buffer)
-		fbuf.ReadFrom(fr)
-		fr.Close()
+		if _, err := fbuf.ReadFrom(fr); err != nil {
+			log.Printf("[%s] read file: %s", f.Name, err)
+		}
+
+		if err := fr.Close(); err != nil {
+			log.Printf("[%s] file close: %s", f.Name, err)
+		}
 
 		// Write contents as single file inside zip
 		var fw io.Writer
@@ -539,11 +544,15 @@ func (t *Template) Bytes() ([]byte, error) {
 
 		// Move/Write struct-saved file to docx archive file back
 		if buf, isModified := t.modified[f.Name]; isModified {
-			fw.Write(buf)
+			if _, err := fw.Write(buf); err != nil {
+				log.Printf("[%s] write error: %s", f.Name, err)
+			}
 			continue
 		}
 
-		fw.Write(fbuf.Bytes())
+		if _, err := fw.Write(fbuf.Bytes()); err != nil {
+			log.Printf("[%s] write error: %s", f.Name, err)
+		}
 	}
 
 	zipErr := zipw.Close()
@@ -558,7 +567,7 @@ func (t *Template) ExportDocx(path string) error {
 		return err
 	}
 
-	err = ioutil.WriteFile(path, buf, 0644)
+	err = ioutil.WriteFile(path, buf, 0644) // #nosec G306
 
 	return err
 }

@@ -81,7 +81,9 @@ func TestPlaceholders(t *testing.T) {
 			}
 
 			plaintext = tdoc.Plaintext()
-			tdoc.ExportDocx("test-data/~test-" + inType + ".docx")
+			if err := tdoc.ExportDocx("test-data/~test-" + inType + ".docx"); err != nil {
+				t.Fatalf("[%s] ExportDocx: %s", inType, err)
+			}
 
 			// Check for "must remove" text
 			removedTexts := []string{
@@ -116,7 +118,9 @@ func TestPlaceholders(t *testing.T) {
 			// non-empty-trigger placeholders must stay as is
 			tdoc, _ = docxplate.OpenTemplate("test-data/" + fname)
 			tdoc.Params(struct{ Dummy string }{Dummy: "never"})
-			tdoc.ExportDocx("test-data/~test-" + inType + ".docx")
+			if err := tdoc.ExportDocx("test-data/~test-" + inType + ".docx"); err != nil {
+				t.Fatalf("[%s] ExportDocx: %s", inType, err)
+			}
 			notreplacedPlaceholdersStr := strings.Join(tdoc.Placeholders(), ", ")
 
 			plaintext = tdoc.Plaintext()

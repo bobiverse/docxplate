@@ -2,6 +2,7 @@ package docxplate
 
 import (
 	"encoding/json"
+	"log"
 )
 
 // ParamList ..
@@ -21,7 +22,10 @@ func StructParams(v interface{}) ParamList {
 func JSONToParams(buf []byte) ParamList {
 	// to map
 	m := map[string]interface{}{}
-	json.Unmarshal(buf, &m)
+	if err := json.Unmarshal(buf, &m); err != nil {
+		log.Printf("JSONToParams: %s", err)
+		return nil
+	}
 
 	// to filtered/clean map
 	params := mapToParams(m)
