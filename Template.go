@@ -6,8 +6,8 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
+	"os"
 	"regexp"
 )
 
@@ -352,7 +352,7 @@ func (t *Template) replaceInlineParams(xnode *xmlNode) {
 				arr := bytes.SplitN(contents, []byte(pholder), 2) // aaaa {{Numbers ,}} bbb
 				if len(arr) == 2 {
 					arr = bytes.SplitN(arr[1], []byte("}}"), 2) // ,}} bbb
-					sep = string(arr[0])                        //,
+					sep = string(arr[0])                        // ,
 				}
 
 				// Contructed full placeholder with both side brackets - {{Key , }}
@@ -567,7 +567,7 @@ func (t *Template) ExportDocx(path string) error {
 		return err
 	}
 
-	err = ioutil.WriteFile(path, buf, 0644) // #nosec G306
+	err = os.WriteFile(path, buf, 0640) // #nosec G306
 
 	return err
 }
