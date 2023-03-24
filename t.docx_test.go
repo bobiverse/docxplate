@@ -17,6 +17,8 @@ type User struct {
 	Friends                []*User
 	BrokenStylePlaceholder string
 	TriggerRemove          string
+	ImageLocal             *docxplate.Image
+	ImageURL               *docxplate.Image
 }
 
 // Primite tests with all valid values
@@ -28,17 +30,27 @@ func TestPlaceholders(t *testing.T) {
 		Age:       27,
 		Nicknames: []string{"amber", "", "AL", "ice", "", "", "", "", "", "", "", ""},
 		Friends: []*User{
-			&User{Name: "Bob", Age: 28},
-			&User{Name: "Cecilia", Age: 29},
-			&User{Name: "", Age: 999},
-			&User{Name: "", Age: 999},
-			&User{Name: "Den", Age: 30},
-			&User{Name: "", Age: 999},
-			&User{Name: "Edgar", Age: 31},
-			&User{Name: "", Age: 999},
-			&User{Name: "", Age: 999},
+			{Name: "Bob", Age: 28},
+			{Name: "Cecilia", Age: 29},
+			{Name: "", Age: 999},
+			{Name: "", Age: 999},
+			{Name: "Den", Age: 30},
+			{Name: "", Age: 999},
+			{Name: "Edgar", Age: 31},
+			{Name: "", Age: 999},
+			{Name: "", Age: 999},
 		},
 		BrokenStylePlaceholder: "(NOT ANYMORE)",
+		ImageLocal: &docxplate.Image{
+			Path:   "images/github.png",
+			Width:  50,
+			Height: 50,
+		},
+		ImageURL: &docxplate.Image{
+			URL:    "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png",
+			Width:  50,
+			Height: 50,
+		},
 	}
 
 	filenames := []string{
@@ -74,14 +86,14 @@ func TestPlaceholders(t *testing.T) {
 			// Run
 			switch inType {
 			case "struct":
+				tdoc.Params(user)
+			case "json":
 				buf, _ := json.Marshal(user)
 				tdoc.Params(buf)
-			case "json":
-				tdoc.Params(user)
 			}
 
 			plaintext = tdoc.Plaintext()
-			if err := tdoc.ExportDocx("test-data/~test-" + inType + ".docx"); err != nil {
+			if err := tdoc.ExportDocx("test-data/~test-" + fname + "-" + inType + ".docx"); err != nil {
 				t.Fatalf("[%s] ExportDocx: %s", inType, err)
 			}
 

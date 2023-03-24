@@ -10,12 +10,21 @@ import (
 // ParamPattern - regex pattern to identify params
 const ParamPattern = `{{(#|)([\w\.]+?)(| .+?)(| [:a-z]+?)}}`
 
+// Image - Choose either path or url to set, if both are set, prioritize path.
+type Image struct {
+	Path   string
+	URL    string
+	Width  int // dimension:pt
+	Height int // dimension:pt
+}
+
 // Param ..
 type Param struct {
 	Key   string
 	Value string
 
 	IsSlice bool // mark param created from slice
+	IsImage bool // mark param created from image
 	Params  ParamList
 
 	parent *Param

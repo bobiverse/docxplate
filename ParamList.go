@@ -3,6 +3,7 @@ package docxplate
 import (
 	"encoding/json"
 	"log"
+	"reflect"
 )
 
 // ParamList ..
@@ -26,7 +27,6 @@ func JSONToParams(buf []byte) ParamList {
 		log.Printf("JSONToParams: %s", err)
 		return nil
 	}
-
 	// to filtered/clean map
 	params := mapToParams(m)
 	params.Walk(func(p *Param) {
@@ -81,6 +81,80 @@ func sliceToParams(arr []interface{}) ParamList {
 		if val == nil && p.Params == nil {
 			continue
 		}
+		params = append(params, p)
+	}
+
+	return params
+}
+
+// Walk struct and collect valid params
+func StructToParams(paramStruct interface{}) ParamList {
+	var params ParamList
+	var keys reflect.Type
+	var vals reflect.Value
+	var ok bool
+
+	if vals, ok = paramStruct.(reflect.Value); !ok {
+		vals = reflect.ValueOf(paramStruct)
+	}
+	keys = vals.Type()
+
+	keynum := keys.NumField()
+	for i := 0; i < keynum; i++ {
+		key := keys.Field(i)
+		val := vals.Field(i)
+		if val.Kind() == reflect.Ptr {
+			val = val.Elem()
+		}
+
+		p := NewParam(key.Name)
+		switch val.Kind() {
+		case reflect.Struct:
+			if image, ok := val.Interface().(Image); ok {
+				p.IsImage = true
+				imgVal, err := processImage(&image)
+				if err != nil {
+					log.Printf("ProcessImage: %s", err)
+					continue
+				}
+				p.SetValue(imgVal)
+			} else {
+				p.Params = StructToParams(val)
+			}
+		case reflect.Slice:
+			p.IsSlice = true
+			p.Params = reflectSliceToParams(val)
+		default:
+			p.SetValue(val)
+		}
+
+		params = append(params, p)
+	}
+
+	return params
+}
+
+// reflectSliceToParams - slice of unknown - simple slice or complex
+func reflectSliceToParams(slice reflect.Value) ParamList {
+	var params ParamList
+
+	for i := 0; i < slice.Len(); i++ {
+		// Use index +1 because in template for user not useful see
+		// 0 as start number. Only programmers will understand
+		p := NewParam(i + 1)
+
+		val := slice.Index(i)
+		if val.Kind() == reflect.Ptr {
+			val = val.Elem()
+		}
+
+		switch val.Kind() {
+		case reflect.Struct:
+			p.Params = StructToParams(val)
+		default:
+			p.SetValue(val)
+		}
+
 		params = append(params, p)
 	}
 

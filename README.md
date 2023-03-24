@@ -9,10 +9,12 @@ Generate document from .docx template file.
 ```go
 // Using this data for all examples below
 type User struct {
-	Name      string
-	Age       int
-	Nicknames []string
-	Friends   []*User
+	Name       string
+	Age        int
+	Nicknames  []string
+	Friends    []*User
+	ImageLocal *docxplate.Image
+	ImageURL   *docxplate.Image
 }
 
 user := User{
@@ -23,6 +25,16 @@ user := User{
 		&User{Name: "Bob", Age: 28},
 		&User{Name: "Cecilia", Age: 29},
 		&User{Name: "Den", Age: 30},
+	},
+	ImageLocal: &docxplate.Image{
+		Path:   "images/github.png",
+		Width:  50,
+		Height: 50,
+	},
+	ImageURL: &docxplate.Image{
+		URL:    "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png",
+		Width:  50,
+		Height: 50,
 	},
 }
 
