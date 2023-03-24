@@ -8,17 +8,30 @@ import (
 	"io"
 	"log"
 	"os"
+	"path"
+	"reflect"
 	"regexp"
 )
+
+var t *Template
 
 // Template ..
 type Template struct {
 	path string
+	file *os.File
+	zipw *zip.Writer     // zip writer
 	zipr *zip.ReadCloser // zip reader
 
 	// save all zip files here so we can build it again
 	files map[string]*zip.File
-
+	// content type document file
+	documentContentTypes *zip.File
+	// main document file
+	documentMain *zip.File
+	// document relations
+	documentRels map[string]*zip.File
+	// only added files (converted to []byte) save here
+	added map[string][]byte
 	// only modified files (converted to []byte) save here
 	modified map[string][]byte
 
@@ -26,13 +39,17 @@ type Template struct {
 	params ParamList
 }
 
-// OpenTemplate ..
+// OpenTemplate .. docpath local file
 func OpenTemplate(docpath string) (*Template, error) {
 	var err error
 
-	t := &Template{
-		path:     docpath,
-		modified: map[string][]byte{},
+	// Init doc template
+	t = &Template{
+		path:         docpath,
+		files:        map[string]*zip.File{},
+		documentRels: map[string]*zip.File{},
+		added:        map[string][]byte{},
+		modified:     map[string][]byte{},
 	}
 
 	// Unzip
@@ -41,21 +58,39 @@ func OpenTemplate(docpath string) (*Template, error) {
 	}
 
 	// Get main document
-	t.files = map[string]*zip.File{}
 	for _, f := range t.zipr.File {
 		t.files[f.Name] = f
+		if f.Name == "[Content_Types].xml" {
+			t.documentContentTypes = f
+		}
+		if f.Name == "word/document.xml" {
+			t.documentMain = f
+		}
+		if path.Ext(f.Name) == ".rels" {
+			t.documentRels[f.Name] = f
+		}
+
 	}
-	if t.MainDocument() == nil {
+
+	if t.documentMain == nil {
 		return nil, fmt.Errorf("mandatory [ word/document.xml ] not found")
 	}
 
 	return t, nil
 }
 
-// MainDocument ..
-func (t *Template) MainDocument() *zip.File {
-	fxml := t.files["word/document.xml"]
-	return fxml
+// OpenTemplateWithURL .. docpath is remote url
+func OpenTemplateWithURL(docurl string) (tpl *Template, err error) {
+	docpath, err := downloadFile(docurl)
+	if err != nil {
+		return nil, err
+	}
+	defer os.Remove(docpath)
+	tpl, err = OpenTemplate(docpath)
+	if err != nil {
+		return nil, err
+	}
+	return
 }
 
 // Convert given bytes to struct of xml nodes
@@ -64,6 +99,8 @@ func (t *Template) bytesToXMLStruct(buf []byte) *xmlNode {
 	// So any string without w: would stay same, but all w- will be replaced again
 	buf = bytes.ReplaceAll(buf, []byte("<w:"), []byte("<w-"))
 	buf = bytes.ReplaceAll(buf, []byte("</w:"), []byte("</w-"))
+	buf = bytes.ReplaceAll(buf, []byte("<v:"), []byte("<v-"))
+	buf = bytes.ReplaceAll(buf, []byte("</v:"), []byte("</v-"))
 
 	xdocNode := &xmlNode{}
 	if err := xml.Unmarshal(buf, &xdocNode); err != nil {
@@ -99,6 +136,7 @@ func (t *Template) fileToXMLStruct(fname string) *xmlNode {
 }
 
 // Expand some placeholders to enable row replacer replace them
+// Note: Currently only struct type support image replacement
 // Users: []User{ User{Name:AAA}, User{Name:BBB} }
 // {{Users.Name}} -->
 //      {{Users.1.Name}}
@@ -114,10 +152,14 @@ func (t *Template) Params(v interface{}) {
 	case []byte:
 		t.params = JSONToParams(val)
 	default:
-		t.params = StructParams(val)
+		if reflect.ValueOf(v).Kind() == reflect.Struct {
+			t.params = StructToParams(val)
+		} else {
+			t.params = StructParams(val)
+		}
 	}
 
-	f := t.MainDocument() // TODO: loop all xml files
+	f := t.documentMain // TODO: loop all xml files
 	xnode := t.fileToXMLStruct(f.Name)
 
 	// Enchance some markup (removed when building XML in the end)
@@ -132,6 +174,9 @@ func (t *Template) Params(v interface{}) {
 	// First try to replace all exact-match placeholders
 	// Do it before expand because it may expand unwanted placeholders
 	t.replaceSingleParams(xnode, false)
+
+	// Replace image placeholder
+	t.replaceImageParams(xnode)
 
 	// Complex placeholders with more depth needs to be expanded
 	// for correct replace
@@ -384,7 +429,7 @@ func (t *Template) replaceSingleParams(xnode *xmlNode, triggerParamOnly bool) {
 		if bytes.Contains(n.Content, []byte("{{")) {
 			// Try to replace on node that contains possible placeholder
 			t.params.Walk(func(p *Param) {
-				if p.IsSlice {
+				if p.IsSlice || p.IsImage {
 					// do not replace slice/map values here. Only singles
 					return
 				}
@@ -408,6 +453,33 @@ func (t *Template) replaceSingleParams(xnode *xmlNode, triggerParamOnly bool) {
 
 				// fmt.Printf("%30s --> %+v", p.Placeholder(), p.Value)
 				n.Content = bytes.ReplaceAll(n.Content, []byte(p.Placeholder()), []byte(p.Value))
+				n.Content = bytes.ReplaceAll(n.Content, []byte(p.PlaceholderKey()), []byte(p.Key))
+			})
+		}
+	})
+}
+
+// Image placeholder - create xml node for image and append to xml node tree
+func (t *Template) replaceImageParams(xnode *xmlNode) {
+	xnode.Walk(func(n *xmlNode) {
+		if n == nil || n.isDeleted {
+			return
+		}
+
+		if bytes.Contains(n.Content, []byte("{{")) {
+			// Try to replace on node that contains possible placeholder
+			t.params.Walk(func(p *Param) {
+				if !p.IsImage {
+					return
+				}
+				if !bytes.Contains(n.Content, []byte(p.Placeholder())) {
+					return
+				}
+				imgNode := t.bytesToXMLStruct([]byte(p.Value))
+				imgNode.parent = n
+				n.Nodes = append(n.Nodes, imgNode)
+				// fmt.Printf("%30s --> %+v", p.Placeholder(), p.Value)
+				n.Content = bytes.ReplaceAll(n.Content, []byte(p.Placeholder()), []byte(""))
 				n.Content = bytes.ReplaceAll(n.Content, []byte(p.PlaceholderKey()), []byte(p.Key))
 			})
 		}
@@ -519,7 +591,6 @@ func (t *Template) Bytes() ([]byte, error) {
 
 	// Loop existing files to build docx archive again
 	for _, f := range t.files {
-
 		// Read contents of single file inside zip
 		var fr io.ReadCloser
 		if fr, err = f.Open(); err != nil {
@@ -553,6 +624,15 @@ func (t *Template) Bytes() ([]byte, error) {
 		if _, err := fw.Write(fbuf.Bytes()); err != nil {
 			log.Printf("[%s] write error: %s", f.Name, err)
 		}
+	}
+	// Loop new added files to build docx archive
+	for fName, buf := range t.added {
+		var fw io.Writer
+		if fw, err = zipw.Create(fName); err != nil {
+			log.Printf("Error writing [ %s ] to archive", fName)
+			continue
+		}
+		fw.Write(buf)
 	}
 
 	zipErr := zipw.Close()
@@ -598,7 +678,7 @@ func (t *Template) Plaintext() string {
 
 	plaintext := ""
 
-	f := t.MainDocument() // TODO: loop all xml files
+	f := t.documentMain // TODO: loop all xml files
 	xnode := t.bytesToXMLStruct(t.modified[f.Name])
 
 	xnode.Walk(func(n *xmlNode) {

@@ -2,10 +2,14 @@ package docxplate
 
 import (
 	"bytes"
+	"crypto/md5"
 	"encoding/xml"
 	"fmt"
 	"io"
 	"log"
+	"net/http"
+	"os"
+	"path"
 )
 
 func readerBytes(rdr io.ReadCloser) []byte {
@@ -36,11 +40,15 @@ func structToXMLBytes(v interface{}) []byte {
 	// This is fixing `xmlns` attribute representation after marshal
 	buf = bytes.ReplaceAll(buf, []byte(` xmlns:_xmlns="xmlns"`), []byte(""))
 	buf = bytes.ReplaceAll(buf, []byte(`_xmlns:`), []byte("xmlns:"))
+	buf = bytes.ReplaceAll(buf, []byte(` xmlns:r="r"`), []byte(""))
+	buf = bytes.ReplaceAll(buf, []byte(` xmlns:o="o"`), []byte(""))
 
 	// xml decoder doesnt support <w:t so using placeholder with "w-" (<w-t)
 	// Or you have solution?
 	buf = bytes.ReplaceAll(buf, []byte("<w-"), []byte("<w:"))
 	buf = bytes.ReplaceAll(buf, []byte("</w-"), []byte("</w:"))
+	buf = bytes.ReplaceAll(buf, []byte("<v-"), []byte("<v:"))
+	buf = bytes.ReplaceAll(buf, []byte("</v-"), []byte("</v:"))
 
 	// buf = bytes.Replace(buf, []byte("w-item"), []byte("w-p"), -1)
 
@@ -55,4 +63,30 @@ func inSlice(a string, slice []string) bool {
 		}
 	}
 	return false
+}
+
+// Download url file
+func downloadFile(urlStr string) (tmpFile string, err error) {
+	// Get file
+	resp, err := http.Get(urlStr)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return "", http.ErrMissingFile
+	}
+	// Create file
+	tmpFile = fmt.Sprintf("%x%s", md5.Sum([]byte(urlStr)), path.Ext(urlStr))
+	out, err := os.Create(tmpFile)
+	if err != nil {
+		return
+	}
+	defer out.Close()
+	// Write body to file
+	_, err = io.Copy(out, resp.Body)
+	if err != nil {
+		return
+	}
+	return tmpFile, nil
 }
