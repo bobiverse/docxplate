@@ -475,11 +475,29 @@ func (t *Template) replaceImageParams(xnode *xmlNode) {
 				if !bytes.Contains(n.Content, []byte(p.Placeholder())) {
 					return
 				}
-				imgNode := t.bytesToXMLStruct([]byte(p.Value))
-				imgNode.parent = n
-				n.Nodes = append(n.Nodes, imgNode)
+				// Sometime the placeholder is in the before or middle of the text, but node is appended in the last
+				// So, we have to split the text and image into different nodes to achieve cross-display
+				contentSlice := bytes.Split(n.Content, []byte(p.Placeholder()))
+				for i, content := range contentSlice {
+					// content node
+					if len(content) != 0 {
+						contentNode := &xmlNode{
+							XMLName: xml.Name{Space: "", Local: "w-t"},
+							Content: content,
+							parent:  n,
+							isNew:   true,
+						}
+						n.Nodes = append(n.Nodes, contentNode)
+					}
+					// image node
+					if len(contentSlice)-i > 1 {
+						imgNode := t.bytesToXMLStruct([]byte(p.Value))
+						imgNode.parent = n
+						n.Nodes = append(n.Nodes, imgNode)
+					}
+				}
 				// fmt.Printf("%30s --> %+v", p.Placeholder(), p.Value)
-				n.Content = bytes.ReplaceAll(n.Content, []byte(p.Placeholder()), []byte(""))
+				n.Content = []byte("")
 				n.Content = bytes.ReplaceAll(n.Content, []byte(p.PlaceholderKey()), []byte(p.Key))
 			})
 		}
