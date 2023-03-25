@@ -107,6 +107,10 @@ func StructToParams(paramStruct interface{}) ParamList {
 			val = val.Elem()
 		}
 
+		if !val.IsValid() {
+			continue
+		}
+
 		p := NewParam(key.Name)
 		switch val.Kind() {
 		case reflect.Struct:
@@ -146,6 +150,10 @@ func reflectSliceToParams(slice reflect.Value) ParamList {
 		val := slice.Index(i)
 		if val.Kind() == reflect.Ptr {
 			val = val.Elem()
+		}
+
+		if !val.IsValid() {
+			continue
 		}
 
 		switch val.Kind() {
