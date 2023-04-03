@@ -31,7 +31,6 @@ type xmlNode struct {
 	parent    *xmlNode
 	isNew     bool // added recently
 	isDeleted bool
-	haveParam bool // have some kind of param placeholder
 }
 
 // UnmarshalXML ..

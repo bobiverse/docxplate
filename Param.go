@@ -8,7 +8,18 @@ import (
 )
 
 // ParamPattern - regex pattern to identify params
-const ParamPattern = `{{(#|)([\w\.]+?)(| .+?)(| [:a-z]+?)}}`
+const ParamPattern = `{{(#|)([\w\.]+?)(| .*?)(| [:a-z]+?)}}`
+
+// Param type
+type ParamType int8
+
+const (
+	StringParam ParamType = iota
+	StructParam
+	SliceParam
+	ImageParam
+	VideoParam
+)
 
 // Image - Choose either path or url to set, if both are set, prioritize path.
 type Image struct {
@@ -22,10 +33,9 @@ type Image struct {
 type Param struct {
 	Key   string
 	Value string
+	Type  ParamType
 
-	IsSlice bool // mark param created from slice
-	IsImage bool // mark param created from image
-	Params  ParamList
+	Params ParamList
 
 	parent *Param
 
@@ -35,6 +45,8 @@ type Param struct {
 	Separator string // {{Usernames SEPERATOR}}
 
 	Trigger *ParamTrigger
+
+	RowPlaceholder string
 }
 
 // NewParam ..
@@ -75,12 +87,20 @@ func (p *Param) SetValue(val interface{}) {
 
 // Placeholder .. {{Key}}
 func (p *Param) Placeholder() string {
-	return "{{" + p.AbsoluteKey + "}}"
+	var trigger string = ""
+	if p.Trigger != nil {
+		trigger = " " + p.Trigger.String()
+	}
+	return "{{" + p.AbsoluteKey + trigger + "}}"
 }
 
 // PlaceholderKey .. {{#Key}}
 func (p *Param) PlaceholderKey() string {
-	return "{{#" + p.AbsoluteKey + "}}"
+	var trigger string
+	if p.Trigger != nil {
+		trigger = " " + p.Trigger.String()
+	}
+	return "{{#" + p.AbsoluteKey + trigger + "}}"
 }
 
 // PlaceholderInline .. {{Key ,}}
@@ -93,30 +113,14 @@ func (p *Param) PlaceholderKeyInline() string {
 	return "{{#" + p.AbsoluteKey + " " // "{{#Key " - space suffix
 }
 
-// PlaceholderPrefix .. {{Key.
+// PlaceholderPrefix .. {{Key
 func (p *Param) PlaceholderPrefix() string {
-	return "{{" + p.AbsoluteKey + "." // "{{Key."
+	return "{{" + p.AbsoluteKey // "{{Key"
 }
 
-// PlaceholderKeyPrefix .. {{Key.
+// PlaceholderKeyPrefix .. {{#Key
 func (p *Param) PlaceholderKeyPrefix() string {
-	return "{{#" + p.AbsoluteKey + "." // "{{#Key."
-}
-
-// PlaceholderWithTrigger .. {{Key :empty:remove:list}}
-func (p *Param) PlaceholderWithTrigger() string {
-	if p.Trigger == nil {
-		return p.Placeholder()
-	}
-	return "{{" + p.AbsoluteKey + " " + p.Trigger.String() + "}}"
-}
-
-// PlaceholderKeyWithTrigger .. {{#Key :empty:remove:list}}
-func (p *Param) PlaceholderKeyWithTrigger() string {
-	if p.Trigger == nil {
-		return p.PlaceholderKey()
-	}
-	return "{{#" + p.AbsoluteKey + " " + p.Trigger.String() + "}}"
+	return "{{#" + p.AbsoluteKey // "{{#Key"
 }
 
 // ToCompact - convert AbsoluteKey placeholder to ComplexKey placeholder
@@ -143,7 +147,7 @@ func (p *Param) Walk(fn func(*Param)) {
 		}
 
 		// Complex key with no slice indexes
-		if p2.parent.IsSlice {
+		if p2.parent.Type == SliceParam {
 			p2.CompactKey = p.Key
 		} else {
 			p2.CompactKey = p.CompactKey + "." + p2.Key
