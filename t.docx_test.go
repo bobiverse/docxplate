@@ -91,7 +91,6 @@ func TestPlaceholders(t *testing.T) {
 				"{{Friends.Age}}",
 			}
 			for _, p := range params {
-				continue
 				if !strings.Contains(plaintext, p) {
 					t.Fatalf("Param `%s` should be found in plaintext: \n\n%s", p, plaintext)
 				}
