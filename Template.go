@@ -11,6 +11,7 @@ import (
 	"path"
 	"reflect"
 	"regexp"
+	"strings"
 )
 
 var t *Template
@@ -171,20 +172,11 @@ func (t *Template) Params(v interface{}) {
 	// Merge them so placeholders are in the same node
 	t.fixBrokenPlaceholders(xnode)
 
-	// First try to replace all exact-match placeholders
-	// Do it before expand because it may expand unwanted placeholders
-	t.replaceSingleParams(xnode, false)
-
-	// Replace image placeholder
-	t.replaceImageParams(xnode)
-
 	// Complex placeholders with more depth needs to be expanded
 	// for correct replace
 	t.expandPlaceholders(xnode)
 
-	t.replaceRowParams(xnode)
-
-	t.replaceInlineParams(xnode)
+	// Replace params
 	t.replaceSingleParams(xnode, false)
 
 	// Collect placeholders with trigger but unset in `t.params`
@@ -242,10 +234,24 @@ func (t *Template) triggerMissingParams(xnode *xmlNode) {
 	t.params = _params
 }
 
+type placeholderType int8
+
+const (
+	signlePlaceholder placeholderType = iota
+	inlinePlaceholder
+	rowPlaceholder
+)
+
+type placeholder struct {
+	Type         placeholderType
+	Placeholders []string
+	Separator    string
+}
+
 // Expand complex placeholders
 func (t *Template) expandPlaceholders(xnode *xmlNode) {
 	t.params.Walk(func(p *Param) {
-		if !p.IsSlice {
+		if p.Type != SliceParam {
 			return
 		}
 
@@ -266,24 +272,80 @@ func (t *Template) expandPlaceholders(xnode *xmlNode) {
 					return
 				}
 
-				// fmt.Printf("%-30s - %s", prefix, nrow.Contents())
-				for _, p2 := range p.Params {
-					// fmt.Printf("\tCLONE: %s -- %s -- %s\n", prefix+p2.Key, p2.PlaceholderPrefix(), nrow.Contents())
-					nnew := nrow.cloneAndAppend()
-					nnew.Walk(func(n *xmlNode) {
-						if !inSlice(n.XMLName.Local, []string{"w-t"}) {
-							return
+				contents := nrow.AllContents()
+				rowParams := rowParams(contents)
+				rowPlaceholders := make(map[string]*placeholder)
+				// Collect placeholder that for expansion
+				for _, rowParam := range rowParams {
+					var placeholderType placeholderType
+					if len(rowParam.Separator) > 0 {
+						placeholderType = inlinePlaceholder
+					} else {
+						placeholderType = rowPlaceholder
+					}
+
+					var trigger string
+					if rowParam.Trigger != nil {
+						trigger = " " + rowParam.Trigger.String()
+					}
+
+					// Currently 2-depth max for params
+					var isMatch bool
+					placeholders := make([]string, len(p.Params), len(p.Params))
+					for i, param := range p.Params {
+						if param.Params == nil {
+							if rowParam.AbsoluteKey == param.CompactKey {
+								isMatch = true
+								placeholders[i] = "{{" + param.AbsoluteKey + trigger + "}}"
+							}
+						} else {
+							for _, param := range param.Params {
+								if rowParam.AbsoluteKey == param.CompactKey {
+									isMatch = true
+									placeholders[i] = "{{" + param.AbsoluteKey + trigger + "}}"
+								}
+							}
 						}
-						n.Content = bytes.ReplaceAll(n.Content, []byte(prefix), []byte(p2.PlaceholderPrefix())) // w-t
-						n.haveParam = true
-					})
+					}
+
+					if isMatch {
+						rowPlaceholders[rowParam.RowPlaceholder] = &placeholder{
+							Type:         placeholderType,
+							Placeholders: placeholders,
+							Separator:    strings.TrimLeft(rowParam.Separator, " "),
+						}
+					}
 				}
-				nrow.delete()
+				// Expand plaheolder exactly
+				nnews := make([]*xmlNode, len(p.Params), len(p.Params))
+				for oldPlaceholer, newPlaceholder := range rowPlaceholders {
+					switch newPlaceholder.Type {
+					case inlinePlaceholder:
+						nrow.Walk(func(n *xmlNode) {
+							if !inSlice(n.XMLName.Local, []string{"w-t"}) {
+								return
+							}
+							n.Content = bytes.ReplaceAll(n.Content, []byte(oldPlaceholer), []byte(strings.Join(newPlaceholder.Placeholders, newPlaceholder.Separator)))
+						})
+					case rowPlaceholder:
+						defer func() {
+							nrow.delete()
+						}()
+						for i, placeholder := range newPlaceholder.Placeholders {
+							if nnews[i] == nil {
+								nnews[i] = nrow.cloneAndAppend()
+							}
+							nnews[i].Walk(func(n *xmlNode) {
+								if !inSlice(n.XMLName.Local, []string{"w-t"}) {
+									return
+								}
+								n.Content = bytes.ReplaceAll(n.Content, []byte(oldPlaceholer), []byte(placeholder))
+							})
+						}
+					}
+				}
 			})
 		}
-
-		// }
-		// fmt.Printf("\n")
 	})
 
 	// Cloned nodes are marked as new by default.
@@ -293,133 +355,7 @@ func (t *Template) expandPlaceholders(xnode *xmlNode) {
 	})
 }
 
-// Row placeholders - clone row, append to existing structure and replace values
-// Numbers: []int{1,3,5}
-// {{Numbers}}
-func (t *Template) replaceRowParams(xnode *xmlNode) {
-	xnode.Walk(func(nrow *xmlNode) {
-		if !nrow.isRowElement() || !nrow.HaveParams() {
-			return
-		}
-
-		// Loop all params and try to replace
-		t.params.Walk(func(p *Param) {
-			if p.Params == nil {
-				// Allow only slice params here
-				return
-			}
-			contents := nrow.AllContents()
-
-			// Trigger is confused for inline separator fixing it
-			// by removing trigger before trying to deal with inline replace
-			trp := NewParamFromRaw(contents)
-			if trp != nil && trp.Trigger != nil {
-				p.Trigger = trp.Trigger
-			}
-
-			// Do not check in nrow.Contents()
-			// because it's checks merged nodes plaintext
-			// But replacer works on every node separately
-			isValidKey := bytes.Contains(contents, []byte(p.Placeholder())) // nrow.AnyChildContains([]byte(p.Placeholder()))
-			isValidKey = isValidKey || bytes.Contains(contents, []byte(p.PlaceholderKey()))
-			if p.Trigger != nil {
-				isValidKey = bytes.Contains(contents, []byte(p.PlaceholderWithTrigger())) // nrow.AnyChildContains([]byte(p.Placeholder()))
-				isValidKey = isValidKey || bytes.Contains(contents, []byte(p.PlaceholderKeyWithTrigger()))
-			}
-
-			if !isValidKey {
-				// specific placeholder not found
-				return
-			}
-
-			// Add new xml nodes for every param sub-param
-			for _, p2 := range p.Params {
-				// fmt.Printf("%30s = %v", p.Placeholder(), p2.Value)
-				nnew := nrow.cloneAndAppend()
-				nnew.Walk(func(nnew *xmlNode) {
-					p2.Trigger = p.Trigger
-
-					nnew.Content = bytes.ReplaceAll(nnew.Content, []byte(p.Placeholder()), []byte(p2.Value))
-					nnew.Content = bytes.ReplaceAll(nnew.Content, []byte(p.PlaceholderKey()), []byte(p2.Key))
-
-					if p.Trigger != nil {
-						buf := nnew.Content
-						nnew.Content = bytes.ReplaceAll(nnew.Content, []byte(p.PlaceholderWithTrigger()), []byte(p2.Value))
-						nnew.Content = bytes.ReplaceAll(nnew.Content, []byte(p.PlaceholderKeyWithTrigger()), []byte(p2.Key))
-						if !bytes.Equal(buf, nnew.Content) {
-							p2.RunTrigger(nnew)
-							p2.Trigger = nil
-						}
-					}
-				})
-
-			}
-			// Remove original row which contains placeholder
-			nrow.delete()
-		})
-
-	})
-}
-
-// Inline placeholders - clone text node, append to existing structure and replace values
-// Numbers: []int{1,3,5}
-// {{Numbers ,}}
-func (t *Template) replaceInlineParams(xnode *xmlNode) {
-	xnode.Walk(func(n *xmlNode) {
-		if !n.HaveParams() {
-			return
-		}
-		if !n.isRowElement() {
-			return
-		}
-		contents := n.AllContents()
-
-		t.params.Walk(func(p *Param) {
-			if p.Params == nil {
-				return
-			}
-
-			placeholders := []string{
-				p.PlaceholderInline(),    // "{{Key " - one side brackets
-				p.PlaceholderKeyInline(), // "{{#Key "
-			}
-
-			for _, pholder := range placeholders {
-				if !n.AnyChildContains([]byte(pholder)) {
-					// specific placeholder not found
-					continue
-				}
-
-				// Separator is last part of placeholder after space
-				// {{Numbers ,}} --> ","
-				// {{Numbers  , }} --> " , " // spaces around
-				var sep string
-				arr := bytes.SplitN(contents, []byte(pholder), 2) // aaaa {{Numbers ,}} bbb
-				if len(arr) == 2 {
-					arr = bytes.SplitN(arr[1], []byte("}}"), 2) // ,}} bbb
-					sep = string(arr[0])                        // ,
-				}
-
-				// Contructed full placeholder with both side brackets - {{Key , }}
-				placeholder := fmt.Sprintf("{{%s %s}}", p.Key, sep) // {{Placeholder sep}}
-
-				for _, p2 := range p.Params {
-					n.Walk(func(n *xmlNode) {
-						// Replace with new value and add same placeholder at the end
-						// so we can replace next param
-						n.Content = bytes.ReplaceAll(n.Content, []byte(placeholder), []byte(p2.Value+sep+placeholder))
-					})
-				}
-				// Remove placeholder so nobody replaces again this
-				n.Walk(func(n *xmlNode) {
-					n.Content = bytes.ReplaceAll(n.Content, []byte(sep+placeholder), nil)
-				})
-
-			}
-
-		})
-	})
-}
+// Replace signle params by type
 func (t *Template) replaceSingleParams(xnode *xmlNode, triggerParamOnly bool) {
 	xnode.Walk(func(n *xmlNode) {
 		if n == nil || n.isDeleted {
@@ -429,61 +365,71 @@ func (t *Template) replaceSingleParams(xnode *xmlNode, triggerParamOnly bool) {
 		if bytes.Contains(n.Content, []byte("{{")) {
 			// Try to replace on node that contains possible placeholder
 			t.params.Walk(func(p *Param) {
-				if p.IsSlice || p.IsImage {
-					// do not replace slice/map values here. Only singles
+				// Only string and image param to replace
+				if p.Type != StringParam && p.Type != ImageParam {
 					return
 				}
-
+				// Prefix check
+				if !bytes.Contains(n.Content, []byte(p.PlaceholderPrefix())) {
+					return
+				}
 				// Trigger: does placeholder have trigger
-				if p.extractTriggerFrom(n.Content) != nil {
-					n.Content = bytes.ReplaceAll(n.Content, []byte(p.PlaceholderWithTrigger()), []byte(p.Value))
-					n.Content = bytes.ReplaceAll(n.Content, []byte(p.PlaceholderKeyWithTrigger()), []byte(p.Key))
-					p.RunTrigger(n)
-					return
+				if p.Trigger = p.extractTriggerFrom(n.Content); p.Trigger != nil {
+					defer func() {
+						p.RunTrigger(n)
+					}()
 				}
-
 				if triggerParamOnly {
 					return
 				}
-
-				if p.parent != nil {
-					n.Content = bytes.ReplaceAll(n.Content, []byte(p.parent.Placeholder()), []byte(p.Value))
-					n.Content = bytes.ReplaceAll(n.Content, []byte(p.parent.PlaceholderKey()), []byte(p.Key))
+				// Repalce by type
+				switch p.Type {
+				case StringParam:
+					t.replaceStringParams(n, p)
+				case ImageParam:
+					t.replaceImageParams(n, p)
 				}
-
-				// fmt.Printf("%30s --> %+v", p.Placeholder(), p.Value)
-				n.Content = bytes.ReplaceAll(n.Content, []byte(p.Placeholder()), []byte(p.Value))
-				n.Content = bytes.ReplaceAll(n.Content, []byte(p.PlaceholderKey()), []byte(p.Key))
 			})
 		}
 	})
 }
 
-// Image placeholder - create xml node for image and append to xml node tree
-func (t *Template) replaceImageParams(xnode *xmlNode) {
-	xnode.Walk(func(n *xmlNode) {
-		if n == nil || n.isDeleted {
-			return
-		}
+// String plaheolder replace
+func (t *Template) replaceStringParams(xnode *xmlNode, param *Param) {
+	xnode.Content = bytes.ReplaceAll(xnode.Content, []byte(param.Placeholder()), []byte(param.Value))
+	xnode.Content = bytes.ReplaceAll(xnode.Content, []byte(param.PlaceholderKey()), []byte(param.Key))
+	return
+}
 
-		if bytes.Contains(n.Content, []byte("{{")) {
-			// Try to replace on node that contains possible placeholder
-			t.params.Walk(func(p *Param) {
-				if !p.IsImage {
-					return
-				}
-				if !bytes.Contains(n.Content, []byte(p.Placeholder())) {
-					return
-				}
-				imgNode := t.bytesToXMLStruct([]byte(p.Value))
-				imgNode.parent = n
-				n.Nodes = append(n.Nodes, imgNode)
-				// fmt.Printf("%30s --> %+v", p.Placeholder(), p.Value)
-				n.Content = bytes.ReplaceAll(n.Content, []byte(p.Placeholder()), []byte(""))
-				n.Content = bytes.ReplaceAll(n.Content, []byte(p.PlaceholderKey()), []byte(p.Key))
-			})
+// Image placeholder replace
+func (t *Template) replaceImageParams(xnode *xmlNode, param *Param) {
+	// Sometime the placeholder is in the before or middle of the text, but node is appended in the last.
+	// So, we have to split the text and image into different nodes to achieve cross-display.
+	// At the same time, in order to avoid the influence of multi-layer nesting on the image display,
+	// the text xml is constructed by using temporary nodes(w-tmp), and is removed by replacement in
+	// structToXMLBytes function.
+	contentSlice := bytes.Split(xnode.Content, []byte(param.Placeholder()))
+	for i, content := range contentSlice {
+		// text node
+		if len(content) != 0 {
+			contentNode := &xmlNode{
+				XMLName: xml.Name{Space: "", Local: "w-tmp"},
+				Content: content,
+				parent:  xnode,
+				isNew:   true,
+			}
+			xnode.Nodes = append(xnode.Nodes, contentNode)
 		}
-	})
+		// image node
+		if len(contentSlice)-i > 1 {
+			imgNode := t.bytesToXMLStruct([]byte(param.Value))
+			imgNode.parent = xnode
+			xnode.Nodes = append(xnode.Nodes, imgNode)
+		}
+	}
+	xnode.Content = []byte("")
+	xnode.Content = bytes.ReplaceAll(xnode.Content, []byte(param.PlaceholderKey()), []byte(param.Key))
+	return
 }
 
 // Enchance some markup (removed when building XML in the end)
@@ -528,56 +474,30 @@ func (t *Template) fixBrokenPlaceholders(xnode *xmlNode) {
 			return
 		}
 
-		xnode.WalkTree(0, func(depth int, wrNode *xmlNode) {
-			if wrNode.XMLName.Local != "w-r" {
+		var isMatchSingleLeftPlaceholder bool
+		var isMatchSingleRightPlaceholder bool
+		contents := xnode.AllContents()
+		xnode.Walk(func(xnode *xmlNode) {
+			if xnode.Content == nil || len(xnode.Content) == 0 {
 				return
 			}
-
-			// if wrNode.index() > 0 {
-			// 	color.Red("%s%s", wrNode.parent.Nodes[wrNode.index()-1].AllContents(), color.HiRedString("%s", wrNode.AllContents()))
-			// }
-
-			// have end but doesn't have beginning in the same node
-			// NOTE: parent "w-p" should contain broken placeholder end "}}"
-			isBrokenEnd := bytes.Contains(wrNode.AllContents(), []byte("}}"))
-			isBrokenEnd = isBrokenEnd && !bytes.Contains(wrNode.AllContents(), []byte("{{"))
-			isBrokenEnd = isBrokenEnd && bytes.Contains(wrNode.parent.AllContents(), []byte("}}"))
-
-			if !isBrokenEnd {
-				return
+			// Match right }} to sub or delete
+			if isMatchSingleLeftPlaceholder {
+				isMatchSingleRightPlaceholder = t.matchSingleRightPlaceholder(string(xnode.Content))
+				if isMatchSingleRightPlaceholder {
+					xnode.Content = xnode.Content[bytes.Index(xnode.Content, []byte("}}"))+2:]
+				} else {
+					xnode.delete()
+					return
+				}
 			}
-
-			var keepNode *xmlNode
-			wrNode.parent.WalkTree(depth, func(depth int, wtNode *xmlNode) {
-				if wtNode.XMLName.Local != "w-t" {
-					return
-				}
-
-				// finished: skip rest
-				if keepNode != nil && bytes.Contains(keepNode.Content, []byte("}}")) {
-					return
-				}
-
-				// Found placeholder start
-				if bytes.Contains(wtNode.Content, []byte("{{")) {
-					keepNode = wtNode
-					return
-				}
-
-				if keepNode == nil {
-					return
-				}
-
-				// Append contens if not completed placeholder
-				keepNode.Content = append(keepNode.Content, wtNode.Content...)
-				// `w-t` node is under `w-r` so remove parent `w-r`
-				wtNode.parent.delete()
-			})
-
-			// fmt.Printf("Merged: %s", keepNode)
-
+			// Match left {{  to fix broken
+			isMatchSingleLeftPlaceholder = t.matchSingleLeftPlaceholder(string(xnode.Content))
+			if isMatchSingleLeftPlaceholder {
+				xnode.Content = append(xnode.Content, contents[bytes.Index(contents, xnode.Content)+len(xnode.Content):bytes.Index(contents, []byte("}}"))+2]...)
+			}
+			contents = contents[bytes.Index(contents, xnode.Content)+len(xnode.Content):]
 		})
-
 	})
 }
 
@@ -664,6 +584,44 @@ func (t *Template) Placeholders() []string {
 	arr = re.FindAllString(plaintext, -1)
 
 	return arr
+}
+
+// Match single left placeholder ({{)
+func (t *Template) matchSingleLeftPlaceholder(content string) bool {
+	stack := make([]string, 0)
+
+	for i, char := range content {
+		if i > 0 {
+			if char == '{' && content[i-1] == '{' {
+				stack = append(stack, "{{")
+			} else if char == '}' && content[i-1] == '}' && len(stack) > 0 {
+				stack = stack[:len(stack)-1]
+			}
+		}
+	}
+
+	return len(stack) > 0
+}
+
+// Match single right placeholder (}})
+func (t *Template) matchSingleRightPlaceholder(content string) bool {
+	stack := make([]string, 0)
+
+	for i, char := range content {
+		if i > 0 {
+			if char == '{' && content[i-1] == '{' {
+				stack = append(stack, "{{")
+			} else if char == '}' && content[i-1] == '}' {
+				if len(stack) > 0 {
+					stack = stack[:len(stack)-1]
+				} else {
+					return true
+				}
+			}
+		}
+	}
+
+	return false
 }
 
 // Plaintext - return as plaintext
