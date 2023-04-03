@@ -43,6 +43,10 @@ func structToXMLBytes(v interface{}) []byte {
 	buf = bytes.ReplaceAll(buf, []byte(` xmlns:r="r"`), []byte(""))
 	buf = bytes.ReplaceAll(buf, []byte(` xmlns:o="o"`), []byte(""))
 
+	// replace tmp node for inline image insert
+	buf = bytes.ReplaceAll(buf, []byte("<w-tmp>"), []byte(""))
+	buf = bytes.ReplaceAll(buf, []byte("</w-tmp>"), []byte(""))
+
 	// xml decoder doesnt support <w:t so using placeholder with "w-" (<w-t)
 	// Or you have solution?
 	buf = bytes.ReplaceAll(buf, []byte("<w-"), []byte("<w:"))

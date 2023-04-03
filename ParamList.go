@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"reflect"
+	"regexp"
 )
 
 // ParamList ..
@@ -44,11 +45,13 @@ func mapToParams(m map[string]interface{}) ParamList {
 
 		switch v := mVal.(type) {
 		case map[string]interface{}:
+			p.Type = StructParam
 			p.Params = mapToParams(v)
 		case []interface{}:
-			p.IsSlice = true
+			p.Type = SliceParam
 			p.Params = sliceToParams(v)
 		default:
+			p.Type = StringParam
 			p.SetValue(mVal)
 		}
 
@@ -73,8 +76,10 @@ func sliceToParams(arr []interface{}) ParamList {
 
 		switch v := val.(type) {
 		case map[string]interface{}:
+			p.Type = StructParam
 			p.Params = mapToParams(v)
 		default:
+			p.Type = StringParam
 			p.SetValue(v)
 		}
 
@@ -115,7 +120,7 @@ func StructToParams(paramStruct interface{}) ParamList {
 		switch val.Kind() {
 		case reflect.Struct:
 			if image, ok := val.Interface().(Image); ok {
-				p.IsImage = true
+				p.Type = ImageParam
 				imgVal, err := processImage(&image)
 				if err != nil {
 					log.Printf("ProcessImage: %s", err)
@@ -123,12 +128,14 @@ func StructToParams(paramStruct interface{}) ParamList {
 				}
 				p.SetValue(imgVal)
 			} else {
+				p.Type = StructParam
 				p.Params = StructToParams(val)
 			}
 		case reflect.Slice:
-			p.IsSlice = true
+			p.Type = SliceParam
 			p.Params = reflectSliceToParams(val)
 		default:
+			p.Type = StringParam
 			p.SetValue(val)
 		}
 
@@ -162,8 +169,20 @@ func reflectSliceToParams(slice reflect.Value) ParamList {
 
 		switch val.Kind() {
 		case reflect.Struct:
-			p.Params = StructToParams(val)
+			if image, ok := val.Interface().(Image); ok {
+				p.Type = ImageParam
+				imgVal, err := processImage(&image)
+				if err != nil {
+					log.Printf("ProcessImage: %s", err)
+					continue
+				}
+				p.SetValue(imgVal)
+			} else {
+				p.Type = StructParam
+				p.Params = StructToParams(val)
+			}
 		default:
+			p.Type = StringParam
 			p.SetValue(val)
 		}
 
@@ -171,6 +190,25 @@ func reflectSliceToParams(slice reflect.Value) ParamList {
 	}
 
 	return params
+}
+
+// Parse row content to param list
+func rowParams(row []byte) ParamList {
+	// extract from raw contents
+	re := regexp.MustCompile(ParamPattern)
+	matches := re.FindAllSubmatch(row, -1)
+	if matches == nil || matches[0] == nil {
+		return nil
+	}
+	var list []*Param
+	for _, match := range matches {
+		p := NewParam(string(match[2]))
+		p.RowPlaceholder = string(match[0])
+		p.Separator = string(match[3])
+		p.Trigger = NewParamTrigger(match[4])
+		list = append(list, p)
+	}
+	return list
 }
 
 // Walk through params
