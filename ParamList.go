@@ -135,6 +135,10 @@ func StructToParams(paramStruct interface{}) ParamList {
 		params = append(params, p)
 	}
 
+	params.Walk(func(p *Param) {
+		// use Walk func built-in logic to assign keys
+	})
+
 	return params
 }
 
