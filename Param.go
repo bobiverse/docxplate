@@ -34,6 +34,7 @@ type Param struct {
 	Key   string
 	Value string
 	Type  ParamType
+	Level int
 
 	Params ParamList
 
@@ -130,11 +131,13 @@ func (p *Param) ToCompact(placeholder string) string {
 }
 
 // Walk down
-func (p *Param) Walk(fn func(*Param)) {
+func (p *Param) Walk(fn func(*Param), level int) {
 	for _, p2 := range p.Params {
 		if p2 == nil {
 			continue
 		}
+		// Assign Level
+		p2.Level = level
 
 		// Assign parent
 		p2.parent = p
@@ -155,7 +158,18 @@ func (p *Param) Walk(fn func(*Param)) {
 
 		fn(p2)
 
-		p2.Walk(fn)
+		p2.Walk(fn, level+1)
+	}
+}
+
+// Walk function
+func (p *Param) WalkFunc(fn func(*Param)) {
+	for _, p2 := range p.Params {
+		if p2 == nil {
+			continue
+		}
+		fn(p2)
+		p2.WalkFunc(fn)
 	}
 }
 
