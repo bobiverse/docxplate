@@ -289,24 +289,19 @@ func (t *Template) expandPlaceholders(xnode *xmlNode) {
 						trigger = " " + rowParam.Trigger.String()
 					}
 
-					// Currently 2-depth max for params
 					var isMatch bool
+					var index int = -1
+					currentLevel := p.Level
 					placeholders := make([]string, len(p.Params), len(p.Params))
-					for i, param := range p.Params {
-						if param.Params == nil {
-							if rowParam.AbsoluteKey == param.CompactKey {
-								isMatch = true
-								placeholders[i] = "{{" + param.AbsoluteKey + trigger + "}}"
-							}
-						} else {
-							for _, param := range param.Params {
-								if rowParam.AbsoluteKey == param.CompactKey {
-									isMatch = true
-									placeholders[i] = "{{" + param.AbsoluteKey + trigger + "}}"
-								}
-							}
+					p.WalkFunc(func(p *Param) {
+						if p.Level == currentLevel+1 {
+							index++
 						}
-					}
+						if rowParam.AbsoluteKey == p.CompactKey {
+							isMatch = true
+							placeholders[index] = "{{" + p.AbsoluteKey + trigger + "}}"
+						}
+					})
 
 					if isMatch {
 						rowPlaceholders[rowParam.RowPlaceholder] = &placeholder{

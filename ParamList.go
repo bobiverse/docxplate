@@ -119,6 +119,9 @@ func StructToParams(paramStruct interface{}) ParamList {
 		p := NewParam(key.Name)
 		switch val.Kind() {
 		case reflect.Struct:
+			if !val.CanInterface() {
+				continue
+			}
 			if image, ok := val.Interface().(Image); ok {
 				p.Type = ImageParam
 				imgVal, err := processImage(&image)
@@ -215,6 +218,7 @@ func rowParams(row []byte) ParamList {
 func (params ParamList) Walk(fn func(*Param)) {
 	for _, p := range params {
 		fn(p)
-		p.Walk(fn)
+		p.Level = 1
+		p.Walk(fn, p.Level+1)
 	}
 }
