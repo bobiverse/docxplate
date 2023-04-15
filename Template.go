@@ -108,8 +108,11 @@ func (t *Template) bytesToXMLStruct(buf []byte) *xmlNode {
 		log.Printf("fileToXMLStruct: %v", err)
 	}
 
+	xdocNode.FixNamespaceDuplication()
 	// Assign parent nodes to all nodes
 	xdocNode.Walk(func(xnode *xmlNode) {
+		xnode.FixNamespaceDuplication()
+
 		if xnode.Tag() == "w-body" {
 			xnode.parent = xdocNode
 		}
@@ -400,30 +403,28 @@ func (t *Template) replaceStringParams(xnode *xmlNode, param *Param) {
 func (t *Template) replaceImageParams(xnode *xmlNode, param *Param) {
 	// Sometime the placeholder is in the before or middle of the text, but node is appended in the last.
 	// So, we have to split the text and image into different nodes to achieve cross-display.
-	// At the same time, in order to avoid the influence of multi-layer nesting on the image display,
-	// the text xml is constructed by using temporary nodes(w-tmp), and is removed by replacement in
-	// structToXMLBytes function.
 	contentSlice := bytes.Split(xnode.Content, []byte(param.Placeholder()))
 	for i, content := range contentSlice {
 		// text node
 		if len(content) != 0 {
 			contentNode := &xmlNode{
-				XMLName: xml.Name{Space: "", Local: "w-tmp"},
+				XMLName: xml.Name{Space: "", Local: "w-t"},
 				Content: content,
-				parent:  xnode,
+				parent:  xnode.parent,
 				isNew:   true,
 			}
-			xnode.Nodes = append(xnode.Nodes, contentNode)
+			xnode.parent.Nodes = append(xnode.parent.Nodes, contentNode)
 		}
 		// image node
 		if len(contentSlice)-i > 1 {
 			imgNode := t.bytesToXMLStruct([]byte(param.Value))
-			imgNode.parent = xnode
-			xnode.Nodes = append(xnode.Nodes, imgNode)
+			imgNode.parent = xnode.parent
+			xnode.parent.Nodes = append(xnode.parent.Nodes, imgNode)
 		}
 	}
+	// Empty the content before deleting to prevent reprocessing when params walk
 	xnode.Content = []byte("")
-	xnode.Content = bytes.ReplaceAll(xnode.Content, []byte(param.PlaceholderKey()), []byte(param.Key))
+	xnode.delete()
 	return
 }
 
