@@ -10,9 +10,10 @@ import (
 // ParamPattern - regex pattern to identify params
 const ParamPattern = `{{(#|)([\w\.]+?)(| .*?)(| [:a-z]+?)}}`
 
-// Param type
+// ParamType ..
 type ParamType int8
 
+// Param constants
 const (
 	StringParam ParamType = iota
 	StructParam
@@ -162,7 +163,7 @@ func (p *Param) Walk(fn func(*Param), level int) {
 	}
 }
 
-// Walk function
+// WalkFunc for callback while walking down the tree
 func (p *Param) WalkFunc(fn func(*Param)) {
 	for _, p2 := range p.Params {
 		if p2 == nil {
