@@ -58,7 +58,7 @@ func TestDownloadFileInvalidCases(t *testing.T) {
 	t.Run("server read error", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Length", "2")
-			io.WriteString(w, "1")
+			io.WriteString(w, "1") // #nosec G104
 		}))
 		defer server.Close()
 
