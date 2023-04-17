@@ -42,7 +42,10 @@ func (xnode *xmlNode) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error
 
 // Walk down all nodes and do custom stuff with given function
 func (xnode *xmlNode) Walk(fn func(*xmlNode)) {
-	for _, n := range xnode.Nodes {
+	// Using index to iterate nodes instead of for-range to process dynamic nodes
+	for i := 0; i < len(xnode.Nodes); i++ {
+		n := xnode.Nodes[i]
+
 		if n == nil {
 			continue
 		}
@@ -431,4 +434,15 @@ func (xnode *xmlNode) IsListItem() (bool, string) {
 	var listID = numNode.Attr("val")
 
 	return true, listID
+}
+
+// Remove xml namespace attr to fix duplication bug in encoding/xml
+// issue: https://github.com/golang/go/issues/7535
+func (xnode *xmlNode) FixNamespaceDuplication() {
+	for i := 0; i < len(xnode.Attrs); i++ {
+		if xnode.Attrs[i].Name.Local == "xmlns" {
+			xnode.Attrs = append(xnode.Attrs[:i], xnode.Attrs[i+1:]...)
+			i--
+		}
+	}
 }

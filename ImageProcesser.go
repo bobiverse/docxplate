@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-var imgXMLTpl = "<w:r><w:pict><v:shape style='width:%dpt;height:%dpt'><v:imagedata r:id='%s'/></v:shape></w:pict></w:r>"
+var imgXMLTpl = "<w:pict><v:shape style='width:%dpt;height:%dpt'><v:imagedata r:id='%s'/></v:shape></w:pict>"
 
 // Process image placeholder - add file, rels and return replace val
 func processImage(img *Image) (imgXMLStr string, err error) {
