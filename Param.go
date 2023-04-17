@@ -52,7 +52,7 @@ type Param struct {
 }
 
 // NewParam ..
-func NewParam(key interface{}) *Param {
+func NewParam(key any) *Param {
 	p := &Param{
 		Key: fmt.Sprintf("%v", key),
 	}
@@ -77,7 +77,7 @@ func NewParamFromRaw(raw []byte) *Param {
 }
 
 // SetValue - any value to string
-func (p *Param) SetValue(val interface{}) {
+func (p *Param) SetValue(val any) {
 	switch v := val.(type) {
 	case string:
 		p.Value = v

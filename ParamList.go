@@ -12,9 +12,9 @@ type ParamList []*Param
 
 // StructParams - load params from given any struct
 // 1) Convert struct to JSON
-// 2) Now convert JSON to map[string]interface{}
+// 2) Now convert JSON to map[string]any
 // 3) Clear params from nil
-func StructParams(v interface{}) ParamList {
+func StructParams(v any) ParamList {
 	// to JSON output
 	buf, _ := json.MarshalIndent(v, "", "\t")
 	return JSONToParams(buf)
@@ -23,7 +23,7 @@ func StructParams(v interface{}) ParamList {
 // JSONToParams - load params from JSON
 func JSONToParams(buf []byte) ParamList {
 	// to map
-	m := map[string]interface{}{}
+	m := map[string]any{}
 	if err := json.Unmarshal(buf, &m); err != nil {
 		log.Printf("JSONToParams: %s", err)
 		return nil
@@ -37,17 +37,17 @@ func JSONToParams(buf []byte) ParamList {
 	return params
 }
 
-// walk map[string]interface{} and collect valid params
-func mapToParams(m map[string]interface{}) ParamList {
+// walk map[string]any and collect valid params
+func mapToParams(m map[string]any) ParamList {
 	var params ParamList
 	for mKey, mVal := range m {
 		p := NewParam(mKey)
 
 		switch v := mVal.(type) {
-		case map[string]interface{}:
+		case map[string]any:
 			p.Type = StructParam
 			p.Params = mapToParams(v)
-		case []interface{}:
+		case []any:
 			p.Type = SliceParam
 			p.Params = sliceToParams(v)
 		default:
@@ -66,7 +66,7 @@ func mapToParams(m map[string]interface{}) ParamList {
 }
 
 // sliceToParams - slice of unknown - simple slice or complex
-func sliceToParams(arr []interface{}) ParamList {
+func sliceToParams(arr []any) ParamList {
 	var params ParamList
 
 	for i, val := range arr {
@@ -75,7 +75,7 @@ func sliceToParams(arr []interface{}) ParamList {
 		p := NewParam(i + 1)
 
 		switch v := val.(type) {
-		case map[string]interface{}:
+		case map[string]any:
 			p.Type = StructParam
 			p.Params = mapToParams(v)
 		default:
@@ -93,7 +93,7 @@ func sliceToParams(arr []interface{}) ParamList {
 }
 
 // StructToParams - walk struct and collect valid params
-func StructToParams(paramStruct interface{}) ParamList {
+func StructToParams(paramStruct any) ParamList {
 	var params ParamList
 	var keys reflect.Type
 	var vals reflect.Value

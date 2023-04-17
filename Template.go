@@ -148,7 +148,7 @@ func (t *Template) fileToXMLStruct(fname string) *xmlNode {
 
 // Params  - replace template placeholders with params
 // "Hello {{ Name }}!"" --> "Hello World!""
-func (t *Template) Params(v interface{}) {
+func (t *Template) Params(v any) {
 	// t.params = collectParams("", v)
 	switch val := v.(type) {
 	case string:
@@ -545,10 +545,13 @@ func (t *Template) Bytes() ([]byte, error) {
 	for fName, buf := range t.added {
 		var fw io.Writer
 		if fw, err = zipw.Create(fName); err != nil {
-			log.Printf("Error writing [ %s ] to archive", fName)
+			log.Printf("Error creating [ %s ] to write to archive; %s", fName, err)
 			continue
 		}
-		fw.Write(buf)
+		if _, err := fw.Write(buf); err != nil {
+			log.Printf("Error writing [ %s ] to archive; %s", fName, err)
+			continue
+		}
 	}
 
 	zipErr := zipw.Close()

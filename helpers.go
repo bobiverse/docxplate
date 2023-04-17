@@ -2,18 +2,24 @@ package docxplate
 
 import (
 	"bytes"
-	"crypto/md5"
 	"encoding/xml"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"path"
 )
 
 func readerBytes(rdr io.ReadCloser) []byte {
 	buf := new(bytes.Buffer)
+
+	if rdr == nil {
+		log.Printf("can't read bytes from empty reader")
+		return nil
+
+	}
 
 	if _, err := buf.ReadFrom(rdr); err != nil {
 		log.Printf("can't read bytes: %s", err)
@@ -29,7 +35,7 @@ func readerBytes(rdr io.ReadCloser) []byte {
 }
 
 // Encode struct to xml code string
-func structToXMLBytes(v interface{}) []byte {
+func structToXMLBytes(v any) []byte {
 	// buf, err := xml.MarshalIndent(v, "", "  ")
 	buf, err := xml.Marshal(v)
 	if err != nil {
@@ -66,27 +72,42 @@ func inSlice(a string, slice []string) bool {
 }
 
 // Download url file
+// TODO: check for mime-type? if allow to download image, then only white-listed types
 func downloadFile(urlStr string) (tmpFile string, err error) {
-	// Get file
-	resp, err := http.Get(urlStr)
+	// validate url first
+	parsedURL, err := url.Parse(urlStr)
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
+
+	// download
+	resp, err := http.Get(parsedURL.String()) // #nosec G107 - expected to download here
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close() // #nosec G307
+
+	// validate
+	if resp.StatusCode != http.StatusOK {
 		return "", http.ErrMissingFile
 	}
-	// Create file
-	tmpFile = fmt.Sprintf("%x%s", md5.Sum([]byte(urlStr)), path.Ext(urlStr))
-	out, err := os.Create(tmpFile)
+
+	// create temporary file
+	tmpFile = fmt.Sprintf("remotefile-*%s", path.Ext(urlStr))
+	out, err := os.CreateTemp("", tmpFile) // #nosec G304
 	if err != nil {
 		return
 	}
-	defer out.Close()
-	// Write body to file
+	tmpFile = out.Name()
+
+	// write body to temp file
 	_, err = io.Copy(out, resp.Body)
 	if err != nil {
-		return
+		return "", fmt.Errorf("failed to write response body to file: %s", err)
 	}
+	if err := out.Close(); err != nil {
+		return "", fmt.Errorf("failed to close writer to file: %s", err)
+	}
+
 	return tmpFile, nil
 }

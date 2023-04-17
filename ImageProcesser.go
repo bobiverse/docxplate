@@ -12,10 +12,12 @@ var imgXMLTpl = "<w:pict><v:shape style='width:%dpt;height:%dpt'><v:imagedata r:
 
 // Process image placeholder - add file, rels and return replace val
 func processImage(img *Image) (imgXMLStr string, err error) {
-	var imgPath string
-	if img.Path != "" {
-		imgPath = img.Path
-	} else {
+	// local file as default option.
+	// remote file will overwrite this if needed
+	var imgPath = img.Path
+
+	// remote file if URL defined
+	if img.URL != "" {
 		imgPath, err = downloadFile(img.URL)
 		if err != nil {
 			return
@@ -24,7 +26,7 @@ func processImage(img *Image) (imgXMLStr string, err error) {
 	}
 
 	// Add image to zip
-	imgBytes, err := os.ReadFile(imgPath)
+	imgBytes, err := os.ReadFile(imgPath) // #nosec G304
 	if err != nil {
 		return
 	}
