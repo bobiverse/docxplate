@@ -108,6 +108,7 @@ func StructToParams(paramStruct interface{}) ParamList {
 	for i := 0; i < keynum; i++ {
 		key := keys.Field(i)
 		val := vals.Field(i)
+
 		if val.Kind() == reflect.Ptr {
 			val = val.Elem()
 		}
@@ -119,27 +120,16 @@ func StructToParams(paramStruct interface{}) ParamList {
 		p := NewParam(key.Name)
 		switch val.Kind() {
 		case reflect.Struct:
-			if !val.CanInterface() {
-				continue
-			}
-			if image, ok := val.Interface().(Image); ok {
-				p.Type = ImageParam
-				imgVal, err := processImage(&image)
-				if err != nil {
-					log.Printf("ProcessImage: %s", err)
-					continue
-				}
-				p.SetValue(imgVal)
-			} else {
-				p.Type = StructParam
-				p.Params = StructToParams(val)
-			}
+			reflectStructToParams(p, val)
 		case reflect.Slice:
-			p.Type = SliceParam
-			p.Params = reflectSliceToParams(val)
+			reflectSliceToParams(p, val)
 		default:
 			p.Type = StringParam
 			p.SetValue(val)
+		}
+
+		if p == nil {
+			continue
 		}
 
 		params = append(params, p)
@@ -152,47 +142,64 @@ func StructToParams(paramStruct interface{}) ParamList {
 	return params
 }
 
-// reflectSliceToParams - slice of unknown - simple slice or complex
-func reflectSliceToParams(slice reflect.Value) ParamList {
-	var params ParamList
+// reflectStructToParams - map struct of reflect to params include special param type process
+func reflectStructToParams(p *Param, val reflect.Value) {
+	if !val.CanInterface() {
+		p = nil
+		return
+	}
 
-	for i := 0; i < slice.Len(); i++ {
+	if image, ok := val.Interface().(Image); ok {
+		imgVal, err := processImage(&image)
+		if err != nil {
+			log.Printf("ProcessImage: %s", err)
+			p = nil
+			return
+		}
+		p.Type = ImageParam
+		p.SetValue(imgVal)
+	} else {
+		p.Type = StructParam
+		p.Params = StructToParams(val)
+	}
+
+	return
+}
+
+// reflectSliceToParams - map slice of reflect to params
+func reflectSliceToParams(p *Param, val reflect.Value) {
+	p.Type = SliceParam
+
+	for i := 0; i < val.Len(); i++ {
 		// Use index +1 because in template for user not useful see
 		// 0 as start number. Only programmers will understand
-		p := NewParam(i + 1)
+		itemParam := NewParam(i + 1)
+		itemVal := val.Index(i)
 
-		val := slice.Index(i)
-		if val.Kind() == reflect.Ptr {
-			val = val.Elem()
+		if itemVal.Kind() == reflect.Ptr {
+			itemVal = itemVal.Elem()
 		}
 
-		if !val.IsValid() {
+		if !itemVal.IsValid() {
 			continue
 		}
 
-		switch val.Kind() {
+		switch itemVal.Kind() {
 		case reflect.Struct:
-			if image, ok := val.Interface().(Image); ok {
-				p.Type = ImageParam
-				imgVal, err := processImage(&image)
-				if err != nil {
-					log.Printf("ProcessImage: %s", err)
-					continue
-				}
-				p.SetValue(imgVal)
-			} else {
-				p.Type = StructParam
-				p.Params = StructToParams(val)
-			}
+			reflectStructToParams(itemParam, itemVal)
 		default:
-			p.Type = StringParam
-			p.SetValue(val)
+			itemParam.Type = StringParam
+			itemParam.SetValue(itemVal)
 		}
 
-		params = append(params, p)
+		if itemParam == nil {
+			continue
+		}
+
+		p.Params = append(p.Params, itemParam)
 	}
 
-	return params
+	return
 }
 
 // Parse row content to param list
