@@ -90,3 +90,16 @@ func downloadFile(urlStr string) (tmpFile string, err error) {
 	}
 	return tmpFile, nil
 }
+
+func downloadFileAsBytes(url string) ([]byte, error) {
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	return data, nil
+}

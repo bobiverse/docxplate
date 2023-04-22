@@ -18,10 +18,9 @@ var t *Template
 
 // Template ..
 type Template struct {
-	path string
 	file *os.File
-	zipw *zip.Writer     // zip writer
-	zipr *zip.ReadCloser // zip reader
+	zipw *zip.Writer // zip writer
+	zipr *zip.Reader // zip reader
 
 	// save all zip files here so we can build it again
 	files map[string]*zip.File
@@ -42,19 +41,46 @@ type Template struct {
 
 // OpenTemplate .. docpath local file
 func OpenTemplate(docpath string) (*Template, error) {
-	var err error
+	file, err := os.Open(docpath)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
 
+	docBytes, err := io.ReadAll(file)
+	if err != nil {
+		return nil, err
+	}
+
+	return OpenTemplateWithBytes(docBytes)
+}
+
+// OpenTemplateWithURL .. docpath is remote url
+func OpenTemplateWithURL(docurl string) (*Template, error) {
+	docBytes, err := downloadFileAsBytes(docurl)
+	if err != nil {
+		return nil, err
+	}
+	tpl, err := OpenTemplateWithBytes(docBytes)
+	if err != nil {
+		return nil, err
+	}
+	return tpl, nil
+}
+
+// OpenTemplateWithBytes docBytes is bytes
+func OpenTemplateWithBytes(docBytes []byte) (*Template, error) {
 	// Init doc template
 	t = &Template{
-		path:         docpath,
 		files:        map[string]*zip.File{},
 		documentRels: map[string]*zip.File{},
 		added:        map[string][]byte{},
 		modified:     map[string][]byte{},
 	}
 
+	var err error
 	// Unzip
-	if t.zipr, err = zip.OpenReader(t.path); err != nil {
+	if t.zipr, err = zip.NewReader(bytes.NewReader(docBytes), int64(len(docBytes))); err != nil {
 		return nil, err
 	}
 
@@ -70,7 +96,6 @@ func OpenTemplate(docpath string) (*Template, error) {
 		if path.Ext(f.Name) == ".rels" {
 			t.documentRels[f.Name] = f
 		}
-
 	}
 
 	if t.documentMain == nil {
@@ -78,20 +103,6 @@ func OpenTemplate(docpath string) (*Template, error) {
 	}
 
 	return t, nil
-}
-
-// OpenTemplateWithURL .. docpath is remote url
-func OpenTemplateWithURL(docurl string) (tpl *Template, err error) {
-	docpath, err := downloadFile(docurl)
-	if err != nil {
-		return nil, err
-	}
-	defer os.Remove(docpath)
-	tpl, err = OpenTemplate(docpath)
-	if err != nil {
-		return nil, err
-	}
-	return
 }
 
 // Convert given bytes to struct of xml nodes
