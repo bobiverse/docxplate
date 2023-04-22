@@ -59,7 +59,6 @@ func mapToParams(m map[string]interface{}) ParamList {
 			continue
 		}
 		params = append(params, p)
-
 	}
 
 	return params

@@ -86,7 +86,6 @@ func NewParamTrigger(raw []byte) *ParamTrigger {
 
 // Validate trigger
 func (tr *ParamTrigger) isValid() bool {
-
 	// On
 	if !inSlice(tr.On, []string{
 		TriggerOnEmpty,

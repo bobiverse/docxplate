@@ -18,8 +18,8 @@ var t *Template
 
 // Template ..
 type Template struct {
-	file *os.File
-	zipw *zip.Writer // zip writer
+	//file *os.File
+	//zipw *zip.Writer // zip writer
 	zipr *zip.Reader // zip reader
 
 	// save all zip files here so we can build it again
@@ -30,6 +30,10 @@ type Template struct {
 	documentMain *zip.File
 	// document relations
 	documentRels map[string]*zip.File
+	// document headers
+	documentHeaders map[string]*zip.File
+	// document footer
+	documentFooters map[string]*zip.File
 	// only added files (converted to []byte) save here
 	added map[string][]byte
 	// only modified files (converted to []byte) save here
@@ -41,13 +45,7 @@ type Template struct {
 
 // OpenTemplate .. docpath local file
 func OpenTemplate(docpath string) (*Template, error) {
-	file, err := os.Open(docpath)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-
-	docBytes, err := io.ReadAll(file)
+	docBytes, err := os.ReadFile(docpath)
 	if err != nil {
 		return nil, err
 	}
@@ -72,10 +70,12 @@ func OpenTemplateWithURL(docurl string) (*Template, error) {
 func OpenTemplateWithBytes(docBytes []byte) (*Template, error) {
 	// Init doc template
 	t = &Template{
-		files:        map[string]*zip.File{},
-		documentRels: map[string]*zip.File{},
-		added:        map[string][]byte{},
-		modified:     map[string][]byte{},
+		files:           map[string]*zip.File{},
+		documentRels:    map[string]*zip.File{},
+		documentHeaders: map[string]*zip.File{},
+		documentFooters: map[string]*zip.File{},
+		added:           map[string][]byte{},
+		modified:        map[string][]byte{},
 	}
 
 	var err error
@@ -83,6 +83,9 @@ func OpenTemplateWithBytes(docBytes []byte) (*Template, error) {
 	if t.zipr, err = zip.NewReader(bytes.NewReader(docBytes), int64(len(docBytes))); err != nil {
 		return nil, err
 	}
+
+	documentHeadersRegx := regexp.MustCompile(`word/header[0-9]+.xml`)
+	documentFootersRegx := regexp.MustCompile(`word/footer[0-9]+.xml`)
 
 	// Get main document
 	for _, f := range t.zipr.File {
@@ -95,6 +98,12 @@ func OpenTemplateWithBytes(docBytes []byte) (*Template, error) {
 		}
 		if path.Ext(f.Name) == ".rels" {
 			t.documentRels[f.Name] = f
+		}
+		if documentHeadersRegx.MatchString(f.Name) {
+			t.documentHeaders[f.Name] = f
+		}
+		if documentFootersRegx.MatchString(f.Name) {
+			t.documentFooters[f.Name] = f
 		}
 	}
 
@@ -174,7 +183,17 @@ func (t *Template) Params(v interface{}) {
 		}
 	}
 
-	f := t.documentMain // TODO: loop all xml files
+	t.doReplace(t.documentMain)
+
+	for _, documentHeader := range t.documentHeaders {
+		t.doReplace(documentHeader)
+	}
+	for _, documentFooter := range t.documentFooters {
+		t.doReplace(documentFooter)
+	}
+}
+
+func (t *Template) doReplace(f *zip.File) {
 	xnode := t.fileToXMLStruct(f.Name)
 
 	// Enchance some markup (removed when building XML in the end)
@@ -442,7 +461,6 @@ func (t *Template) replaceImageParams(xnode *xmlNode, param *Param) {
 // Enchance some markup (removed when building XML in the end)
 // so easier to find some element
 func (t *Template) enchanceMarkup(xnode *xmlNode) {
-
 	// List items - add list item node `w-p` attributes
 	// so it's recognized as listitem
 	xnode.Walk(func(n *xmlNode) {
@@ -460,7 +478,6 @@ func (t *Template) enchanceMarkup(xnode *xmlNode) {
 			Name:  xml.Name{Local: "list-id"},
 			Value: listID,
 		})
-
 	})
 }
 
@@ -568,7 +585,6 @@ func (t *Template) Bytes() ([]byte, error) {
 
 // ExportDocx - save new/modified docx based on template
 func (t *Template) ExportDocx(path string) error {
-
 	buf, err := t.Bytes()
 	if err != nil {
 		return err
@@ -633,7 +649,6 @@ func (t *Template) matchSingleRightPlaceholder(content string) bool {
 
 // Plaintext - return as plaintext
 func (t *Template) Plaintext() string {
-
 	if len(t.params) == 0 {
 		// if params not set yet we init process with empty params
 		// and mark content as changed so we can return plaintext with placeholders

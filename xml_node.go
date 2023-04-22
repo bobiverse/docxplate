@@ -189,7 +189,7 @@ func (xnode *xmlNode) cloneAndAppend() *xmlNode {
 	i := xnode.index()
 	if i == -1 {
 		// Return existing instance to avoid nil errors
-		// But this node not added to xml structure list, so dissapears in output
+		// But this node not added to xml structure list, so disappears in output
 		return nnew
 	}
 
@@ -261,7 +261,6 @@ func (xnode *xmlNode) closestUp(nodeTypes []string) *xmlNode {
 				// color.Green("found parent: [%s] == [%s]", n.Tag(), ntype)
 				return n
 			}
-
 		}
 
 		if pn := xnode.parent.closestUp([]string{ntype}); pn != nil {
@@ -295,7 +294,6 @@ func (xnode *xmlNode) String() string {
 	s := fmt.Sprintf("#%d: ", xnode.index())
 	if xnode.isDeleted {
 		s += color.RedString(" !!DELETED!! ")
-
 	}
 	s += fmt.Sprintf("-- %p -- ", xnode)
 	s += fmt.Sprintf("%s: ", xnode.Tag())

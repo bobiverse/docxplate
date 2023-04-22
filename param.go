@@ -43,7 +43,7 @@ type Param struct {
 	AbsoluteKey string // Users.1.Name
 	CompactKey  string // Users.Name
 
-	Separator string // {{Usernames SEPERATOR}}
+	Separator string // {{Usernames SEPARATOR}}
 
 	Trigger *ParamTrigger
 
@@ -83,7 +83,6 @@ func (p *Param) SetValue(val interface{}) {
 	default:
 		p.Value = fmt.Sprintf("%v", val)
 	}
-
 }
 
 // Placeholder .. {{Key}}
@@ -146,7 +145,6 @@ func (p *Param) Walk(fn func(*Param), level int) {
 		p2.AbsoluteKey = p.AbsoluteKey + "." + p2.Key
 		if p.AbsoluteKey == "" {
 			p2.AbsoluteKey = p.Key + "." + p2.Key
-
 		}
 
 		// Complex key with no slice indexes
@@ -271,7 +269,6 @@ func (p *Param) RunTrigger(xnode *xmlNode) {
 		})
 		return
 	}
-
 }
 
 // String - compact debug information as string
