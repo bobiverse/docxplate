@@ -57,8 +57,13 @@ func processImage(img *Image) (imgXMLStr string, err error) {
 	}
 
 	// Add image to relations TODO walk all rels
+	var relNode *xmlNode
 	relName := "word/_rels/document.xml.rels"
-	relNode := t.fileToXMLStruct(relName)
+	if relNodeBytes, ok := t.modified[relName]; ok {
+		relNode = t.bytesToXMLStruct(relNodeBytes)
+	} else {
+		relNode = t.fileToXMLStruct(relName)
+	}
 	rid := fmt.Sprintf("rId%d", len(relNode.Nodes)+1)
 	relNode.Nodes = append(relNode.Nodes, &xmlNode{
 		XMLName: xml.Name{

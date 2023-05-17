@@ -31,19 +31,19 @@ func TestPlaceholders(t *testing.T) {
 		Age:       27,
 		Nicknames: []string{"amber", "", "AL", "ice", "", "", "", "", "", "", "", ""},
 		Friends: []*User{
-			{Name: "Bob", Age: 28, ImageLocal: &docxplate.Image{Path: "images/github.png", Width: 25, Height: 25}},
-			{Name: "Cecilia", Age: 29, ImageLocal: &docxplate.Image{Path: "images/github.png", Width: 25, Height: 25}},
+			{Name: "Bob", Age: 28, ImageLocal: &docxplate.Image{Path: "images/avatar-4.png", Width: 25, Height: 25}},
+			{Name: "Cecilia", Age: 29, ImageLocal: &docxplate.Image{Path: "images/avatar-5.png", Width: 25, Height: 25}},
 			{Name: "", Age: 999},
 			{Name: "", Age: 999},
 			{Name: "Den", Age: 30},
 			{Name: "", Age: 999},
-			{Name: "Edgar", Age: 31, ImageLocal: &docxplate.Image{Path: "images/github.png", Width: 25, Height: 25}},
+			{Name: "Edgar", Age: 31, ImageLocal: &docxplate.Image{Path: "images/avatar-6.png", Width: 25, Height: 25}},
 			{Name: "", Age: 999},
 			{Name: "", Age: 999},
 		},
 		BrokenStylePlaceholder: "(NOT ANYMORE)",
 		ImageLocal: &docxplate.Image{
-			Path:   "images/github.png",
+			Path:   "images/avatar-1.png",
 			Width:  25,
 			Height: 25,
 		},
@@ -54,12 +54,12 @@ func TestPlaceholders(t *testing.T) {
 		},
 		Images: []*docxplate.Image{
 			{
-				Path:   "images/github.png",
+				Path:   "images/avatar-2.png",
 				Width:  25,
 				Height: 25,
 			},
 			{
-				Path:   "images/github.png",
+				Path:   "images/avatar-3.png",
 				Width:  25,
 				Height: 25,
 			},
