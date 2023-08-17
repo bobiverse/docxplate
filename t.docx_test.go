@@ -3,10 +3,10 @@ package docxplate_test
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/briiC/docxplate"
+	"log"
 	"strings"
 	"testing"
-
-	"github.com/briiC/docxplate"
 )
 
 // Using this data for all examples below
@@ -166,4 +166,30 @@ func TestPlaceholders(t *testing.T) {
 		}
 	}
 
+}
+
+func TestDepthStructToParams(t *testing.T) {
+	var user = User{
+		Name: "Alice",
+		Age:  27,
+		Friends: []*User{
+			{Name: "Bob", Age: 28, Friends: []*User{
+				{Name: "Cecilia", Age: 29},
+				{Name: "Sun", Age: 999},
+				{Name: "Tony", Age: 999},
+			}},
+			{Name: "Den", Age: 30, Friends: []*User{
+				{Name: "Ben", Age: 999},
+				{Name: "Edgar", Age: 31},
+				{Name: "Jouny", Age: 999},
+				{Name: "Carrzy", Age: 999},
+			}},
+		},
+	}
+
+	tdoc, _ := docxplate.OpenTemplate("test-data/depth.docx")
+	tdoc.Params(user)
+	if err := tdoc.ExportDocx("test-data/~test-depth.docx"); err != nil {
+		log.Fatal(err)
+	}
 }

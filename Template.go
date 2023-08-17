@@ -240,7 +240,7 @@ func (t *Template) triggerMissingParams(xnode *xmlNode) {
 type placeholderType int8
 
 const (
-	signlePlaceholder placeholderType = iota
+	singlePlaceholder placeholderType = iota
 	inlinePlaceholder
 	rowPlaceholder
 )
@@ -263,6 +263,7 @@ func (t *Template) expandPlaceholders(xnode *xmlNode) {
 			p.ToCompact(p.PlaceholderPrefix()),
 		}
 
+		var max int
 		for _, prefix := range prefixes {
 			xnode.Walk(func(nrow *xmlNode) {
 				if nrow.isNew {
@@ -293,16 +294,16 @@ func (t *Template) expandPlaceholders(xnode *xmlNode) {
 					}
 
 					var isMatch bool
-					var index int = -1
+					var index = -1
 					currentLevel := p.Level
-					placeholders := make([]string, len(p.Params), len(p.Params))
+					placeholders := make([]string, 0, len(p.Params))
 					p.WalkFunc(func(p *Param) {
 						if p.Level == currentLevel+1 {
 							index++
 						}
 						if rowParam.AbsoluteKey == p.CompactKey {
 							isMatch = true
-							placeholders[index] = "{{" + p.AbsoluteKey + trigger + "}}"
+							placeholders = append(placeholders, "{{"+p.AbsoluteKey+trigger+"}}")
 						}
 					})
 
@@ -312,18 +313,22 @@ func (t *Template) expandPlaceholders(xnode *xmlNode) {
 							Placeholders: placeholders,
 							Separator:    strings.TrimLeft(rowParam.Separator, " "),
 						}
+
+						if max < len(placeholders) {
+							max = len(placeholders)
+						}
 					}
 				}
-				// Expand plaheolder exactly
-				nnews := make([]*xmlNode, len(p.Params), len(p.Params))
-				for oldPlaceholer, newPlaceholder := range rowPlaceholders {
+				// Expand placeholder exactly
+				nnews := make([]*xmlNode, max, max)
+				for oldPlaceholder, newPlaceholder := range rowPlaceholders {
 					switch newPlaceholder.Type {
 					case inlinePlaceholder:
 						nrow.Walk(func(n *xmlNode) {
-							if !inSlice(n.XMLName.Local, []string{"w-t"}) {
+							if !inSlice(n.XMLName.Local, []string{"w-t"}) || len(n.Content) == 0 {
 								return
 							}
-							n.Content = bytes.ReplaceAll(n.Content, []byte(oldPlaceholer), []byte(strings.Join(newPlaceholder.Placeholders, newPlaceholder.Separator)))
+							n.Content = bytes.ReplaceAll(n.Content, []byte(oldPlaceholder), []byte(strings.Join(newPlaceholder.Placeholders, newPlaceholder.Separator)))
 						})
 					case rowPlaceholder:
 						defer func() {
@@ -334,10 +339,10 @@ func (t *Template) expandPlaceholders(xnode *xmlNode) {
 								nnews[i] = nrow.cloneAndAppend()
 							}
 							nnews[i].Walk(func(n *xmlNode) {
-								if !inSlice(n.XMLName.Local, []string{"w-t"}) {
+								if !inSlice(n.XMLName.Local, []string{"w-t"}) || len(n.Content) == 0 {
 									return
 								}
-								n.Content = bytes.ReplaceAll(n.Content, []byte(oldPlaceholer), []byte(placeholder))
+								n.Content = bytes.ReplaceAll(n.Content, []byte(oldPlaceholder), []byte(placeholder))
 							})
 						}
 					}
@@ -353,7 +358,7 @@ func (t *Template) expandPlaceholders(xnode *xmlNode) {
 	})
 }
 
-// Replace signle params by type
+// Replace single params by type
 func (t *Template) replaceSingleParams(xnode *xmlNode, triggerParamOnly bool) {
 	xnode.Walk(func(n *xmlNode) {
 		if n == nil || n.isDeleted {
@@ -392,7 +397,7 @@ func (t *Template) replaceSingleParams(xnode *xmlNode, triggerParamOnly bool) {
 	})
 }
 
-// String plaheolder replace
+// String placeholder replace
 func (t *Template) replaceStringParams(xnode *xmlNode, param *Param) {
 	xnode.Content = bytes.ReplaceAll(xnode.Content, []byte(param.Placeholder()), []byte(param.Value))
 	xnode.Content = bytes.ReplaceAll(xnode.Content, []byte(param.PlaceholderKey()), []byte(param.Key))

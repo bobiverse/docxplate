@@ -151,7 +151,7 @@ func (p *Param) Walk(fn func(*Param), level int) {
 
 		// Complex key with no slice indexes
 		if p2.parent.Type == SliceParam {
-			p2.CompactKey = p.Key
+			p2.CompactKey = p.CompactKey
 		} else {
 			p2.CompactKey = p.CompactKey + "." + p2.Key
 		}
