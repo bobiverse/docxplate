@@ -14,6 +14,15 @@ import (
 	"strings"
 )
 
+const mainDocFname = "word/document.xml"
+
+// filename allowed to check/modify for params
+// which have keyword in it
+var modFileNamesLike = []string{
+	"word/footer",
+	mainDocFname,
+	"word/header",
+}
 var t *Template
 
 // Template ..
@@ -27,8 +36,6 @@ type Template struct {
 	files map[string]*zip.File
 	// content type document file
 	documentContentTypes *zip.File
-	// main document file
-	documentMain *zip.File
 	// document relations
 	documentRels map[string]*zip.File
 	// only added files (converted to []byte) save here
@@ -61,20 +68,21 @@ func OpenTemplate(docpath string) (*Template, error) {
 	// Get main document
 	for _, f := range t.zipr.File {
 		t.files[f.Name] = f
+
 		if f.Name == "[Content_Types].xml" {
 			t.documentContentTypes = f
+			continue
 		}
-		if f.Name == "word/document.xml" {
-			t.documentMain = f
-		}
+
 		if path.Ext(f.Name) == ".rels" {
 			t.documentRels[f.Name] = f
+			continue
 		}
 
 	}
 
-	if t.documentMain == nil {
-		return nil, fmt.Errorf("mandatory [ word/document.xml ] not found")
+	if t.files[mainDocFname] == nil {
+		return nil, fmt.Errorf("mandatory [ %s ] not found", mainDocFname)
 	}
 
 	return t, nil
@@ -163,42 +171,49 @@ func (t *Template) Params(v interface{}) {
 		}
 	}
 
-	f := t.documentMain // TODO: loop all xml files
-	xnode := t.fileToXMLStruct(f.Name)
+	for _, f := range t.files {
+		for _, keyword := range modFileNamesLike {
+			if !strings.Contains(f.Name, keyword) {
+				continue
+			}
 
-	// Enchance some markup (removed when building XML in the end)
-	// so easier to find some element
-	t.enchanceMarkup(xnode)
+			xnode := t.fileToXMLStruct(f.Name)
 
-	// While formating docx sometimes same style node is split to
-	// multiple same style nodes and different content
-	// Merge them so placeholders are in the same node
-	t.fixBrokenPlaceholders(xnode)
+			// Enchance some markup (removed when building XML in the end)
+			// so easier to find some element
+			t.enchanceMarkup(xnode)
 
-	// Complex placeholders with more depth needs to be expanded
-	// for correct replace
-	t.expandPlaceholders(xnode)
+			// While formating docx sometimes same style node is split to
+			// multiple same style nodes and different content
+			// Merge them so placeholders are in the same node
+			t.fixBrokenPlaceholders(xnode)
 
-	// Replace params
-	t.replaceSingleParams(xnode, false)
+			// Complex placeholders with more depth needs to be expanded
+			// for correct replace
+			t.expandPlaceholders(xnode)
 
-	// Collect placeholders with trigger but unset in `t.params`
-	// Placeholders with trigger `:empty` must be triggered
-	// otherwise they are left
-	t.triggerMissingParams(xnode)
+			// Replace params
+			t.replaceSingleParams(xnode, false)
 
-	// xnode.Walk(func(n *xmlNode) {
-	// 	if is, _ := n.IsListItem(); is {
-	// 		n.Walk(func(wt *xmlNode) {
-	// 			if wt.Tag() == "w-t" {
-	// 				color.Yellow("%s", wt)
-	// 			}
-	// 		})
-	// 	}
-	// })
+			// Collect placeholders with trigger but unset in `t.params`
+			// Placeholders with trigger `:empty` must be triggered
+			// otherwise they are left
+			t.triggerMissingParams(xnode)
 
-	// Save []bytes
-	t.modified[f.Name] = structToXMLBytes(xnode)
+			// xnode.Walk(func(n *xmlNode) {
+			// 	if is, _ := n.IsListItem(); is {
+			// 		n.Walk(func(wt *xmlNode) {
+			// 			if wt.Tag() == "w-t" {
+			// 				color.Yellow("%s", wt)
+			// 			}
+			// 		})
+			// 	}
+			// })
+
+			// Save []bytes
+			t.modified[f.Name] = structToXMLBytes(xnode)
+		}
+	}
 }
 
 // Collect and trigger placeholders with trigger but unset in `t.params`
@@ -637,20 +652,32 @@ func (t *Template) Plaintext() string {
 
 	plaintext := ""
 
-	f := t.documentMain // TODO: loop all xml files
-	xnode := t.bytesToXMLStruct(t.modified[f.Name])
+	// for fpath, f := range t.files {
+	// 	for _, keyword := range modFileNamesLike {
+	// 		if strings.Contains(f.Name, keyword) {
+	// 			log.Printf("%-30s %v", fpath, f.Name)
+	// 			fmt.Printf("=============== %v", t.modified[f.Name])
+	// 		}
+	// 	}
+	// }
 
-	xnode.Walk(func(n *xmlNode) {
-		if n.Tag() != "w-p" {
-			return
-		}
+	// header and footer must be printed in plaintext
+	for _, f := range t.modified {
+		xnode := t.bytesToXMLStruct(f)
 
-		s := string(n.AllContents())
-		plaintext += s
-		if s != "" {
-			plaintext += "\n"
-		}
-	})
+		xnode.Walk(func(n *xmlNode) {
+			if n.Tag() != "w-p" {
+				return
+			}
+
+			s := string(n.AllContents())
+			plaintext += s
+			if s != "" {
+				plaintext += "\n"
+			}
+		})
+
+	}
 
 	return plaintext
 }
