@@ -70,6 +70,7 @@ func TestPlaceholders(t *testing.T) {
 		"user.template.docx",
 		"tables.docx",
 		"lists.docx",
+		"header-footer.docx",
 	}
 
 	for _, fname := range filenames {
@@ -81,7 +82,10 @@ func TestPlaceholders(t *testing.T) {
 
 		// Test param setup byu different input types
 		for _, inType := range inputs {
-			tdoc, _ := docxplate.OpenTemplate("test-data/" + fname)
+			tdoc, err := docxplate.OpenTemplate("test-data/" + fname)
+			if err != nil {
+				t.Fatalf("[%s] ERR: %s", fname, err)
+			}
 
 			plaintext := tdoc.Plaintext()
 			params := []string{
@@ -92,7 +96,7 @@ func TestPlaceholders(t *testing.T) {
 			}
 			for _, p := range params {
 				if !strings.Contains(plaintext, p) {
-					t.Fatalf("Param `%s` should be found in plaintext: \n\n%s", p, plaintext)
+					t.Fatalf("[%s] Param `%s` should be found in plaintext: \n\n%s", fname, p, plaintext)
 				}
 			}
 
@@ -130,12 +134,12 @@ func TestPlaceholders(t *testing.T) {
 				}
 
 				if !strings.Contains(plaintext, u.Name) {
-					t.Fatalf("User[%s] friends Name must be found: \n\n%s", u.Name, tdoc.Plaintext())
+					t.Fatalf("[%s] User[%s] friends Name must be found: \n\n%s", fname, u.Name, tdoc.Plaintext())
 				}
 
 				years := fmt.Sprintf("%d y/o", u.Age)
 				if !strings.Contains(plaintext, years) {
-					t.Fatalf("User[%s] friends Age[%d] must be found: \n\n%s", u.Name, u.Age, tdoc.Plaintext())
+					t.Fatalf("[%s] User[%s] friends Age[%d] must be found: \n\n%s", fname, u.Name, u.Age, tdoc.Plaintext())
 				}
 			}
 
