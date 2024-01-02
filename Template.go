@@ -604,25 +604,7 @@ func (t *Template) Placeholders() []string {
 
 // Match single left placeholder ({{)
 func (t *Template) matchSingleLeftPlaceholder(content string) bool {
-	stack := make([]string, 0)
-
-	for i, char := range content {
-		if i > 0 {
-			if char == '{' && content[i-1] == '{' {
-				stack = append(stack, "{{")
-			} else if char == '}' && content[i-1] == '}' && len(stack) > 0 {
-				stack = stack[:len(stack)-1]
-			}
-		}
-	}
-
-	return len(stack) > 0
-}
-
-// Match single right placeholder (}})
-func (t *Template) matchSingleRightPlaceholder(content string) bool {
-	stack := make([]string, 0)
-
+	stack := make([]string, 0, 2)
 	for i, char := range content {
 		if i > 0 {
 			if char == '{' && content[i-1] == '{' {
@@ -638,6 +620,22 @@ func (t *Template) matchSingleRightPlaceholder(content string) bool {
 	}
 
 	return false
+}
+
+// Match single right placeholder (}})
+func (t *Template) matchSingleRightPlaceholder(content string) bool {
+	stack := make([]string, 0, 2)
+	for i, char := range content {
+		if i > 0 {
+			if char == '{' && content[i-1] == '{' {
+				stack = append(stack, "{{")
+			} else if char == '}' && content[i-1] == '}' && len(stack) > 0 {
+				stack = stack[:len(stack)-1]
+			}
+		}
+	}
+
+	return len(stack) > 0
 }
 
 // Plaintext - return as plaintext
