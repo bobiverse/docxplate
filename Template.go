@@ -186,7 +186,7 @@ func (t *Template) Params(v interface{}) {
 			// While formating docx sometimes same style node is split to
 			// multiple same style nodes and different content
 			// Merge them so placeholders are in the same node
-			t.fixBrokenPlaceholders(xnode)
+			// t.fixBrokenPlaceholders(xnode)
 
 			// Complex placeholders with more depth needs to be expanded
 			// for correct replace
