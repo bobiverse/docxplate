@@ -490,17 +490,17 @@ func (t *Template) fixBrokenPlaceholders(xnode *xmlNode) {
 			return
 		}
 
-		var isMatchSingleLeftPlaceholder bool
-		var isMatchSingleRightPlaceholder bool
+		var isBrokenLeftPlaceholder bool
+		var isBrokenRightPlaceholder bool
 		contents := xnode.AllContents()
 		xnode.Walk(func(xnode *xmlNode) {
 			if xnode.Content == nil || len(xnode.Content) == 0 {
 				return
 			}
 			// Match right }} to sub or delete
-			if isMatchSingleLeftPlaceholder {
-				isMatchSingleRightPlaceholder = t.matchSingleRightPlaceholder(string(xnode.Content))
-				if isMatchSingleRightPlaceholder {
+			if isBrokenLeftPlaceholder {
+				isBrokenRightPlaceholder = t.matchBrokenRightPlaceholder(string(xnode.Content))
+				if isBrokenRightPlaceholder {
 					xnode.Content = xnode.Content[bytes.Index(xnode.Content, []byte("}}"))+2:]
 				} else {
 					xnode.delete()
@@ -508,8 +508,8 @@ func (t *Template) fixBrokenPlaceholders(xnode *xmlNode) {
 				}
 			}
 			// Match left {{  to fix broken
-			isMatchSingleLeftPlaceholder = t.matchSingleLeftPlaceholder(string(xnode.Content))
-			if isMatchSingleLeftPlaceholder {
+			isBrokenLeftPlaceholder = t.matchBrokenLeftPlaceholder(string(xnode.Content))
+			if isBrokenLeftPlaceholder {
 				xnode.Content = append(xnode.Content, contents[bytes.Index(contents, xnode.Content)+len(xnode.Content):bytes.Index(contents, []byte("}}"))+2]...)
 			}
 			contents = contents[bytes.Index(contents, xnode.Content)+len(xnode.Content):]
@@ -602,9 +602,27 @@ func (t *Template) Placeholders() []string {
 	return arr
 }
 
-// Match single left placeholder ({{)
-func (t *Template) matchSingleLeftPlaceholder(content string) bool {
-	stack := make([]string, 0, 2)
+// Match left part placeholder `{{`
+func (t *Template) matchBrokenLeftPlaceholder(content string) bool {
+	stack := make([]string, 0)
+
+	for i, char := range content {
+		if i > 0 {
+			if char == '{' && content[i-1] == '{' {
+				stack = append(stack, "{{")
+			} else if char == '}' && content[i-1] == '}' && len(stack) > 0 {
+				stack = stack[:len(stack)-1]
+			}
+		}
+	}
+
+	return len(stack) > 0
+}
+
+// Match right placeholder part `}}`
+func (t *Template) matchBrokenRightPlaceholder(content string) bool {
+	stack := make([]string, 0)
+
 	for i, char := range content {
 		if i > 0 {
 			if char == '{' && content[i-1] == '{' {
@@ -620,22 +638,6 @@ func (t *Template) matchSingleLeftPlaceholder(content string) bool {
 	}
 
 	return false
-}
-
-// Match single right placeholder (}})
-func (t *Template) matchSingleRightPlaceholder(content string) bool {
-	stack := make([]string, 0, 2)
-	for i, char := range content {
-		if i > 0 {
-			if char == '{' && content[i-1] == '{' {
-				stack = append(stack, "{{")
-			} else if char == '}' && content[i-1] == '}' && len(stack) > 0 {
-				stack = stack[:len(stack)-1]
-			}
-		}
-	}
-
-	return len(stack) > 0
 }
 
 // Plaintext - return as plaintext
