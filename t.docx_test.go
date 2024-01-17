@@ -3,10 +3,11 @@ package docxplate_test
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/briiC/docxplate"
 	"log"
 	"strings"
 	"testing"
+
+	"github.com/bobiverse/docxplate"
 )
 
 // Using this data for all examples below
