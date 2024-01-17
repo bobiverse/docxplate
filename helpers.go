@@ -15,6 +15,12 @@ import (
 func readerBytes(rdr io.ReadCloser) []byte {
 	buf := new(bytes.Buffer)
 
+	if rdr == nil {
+		log.Printf("can't read bytes from empty reader")
+		return nil
+
+	}
+
 	if _, err := buf.ReadFrom(rdr); err != nil {
 		log.Printf("can't read bytes: %s", err)
 		return nil
