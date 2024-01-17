@@ -1,4 +1,4 @@
-# docxplate
+# docxplate [![Go](https://github.com/bobiverse/docxplate/actions/workflows/go.yml/badge.svg)](https://github.com/bobiverse/docxplate/actions/workflows/go.yml)
 Generate document from .docx template file.  
 (!) **Unstable with complex/many levels Structs.**
 
