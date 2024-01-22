@@ -27,7 +27,6 @@ var t *Template
 
 // Template ..
 type Template struct {
-	path string
 	file *os.File
 	zipw *zip.Writer // zip writer
 	zipr *zip.Reader // zip reader
