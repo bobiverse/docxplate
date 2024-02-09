@@ -92,7 +92,7 @@ func sliceToParams(arr []interface{}) ParamList {
 	return params
 }
 
-// Walk struct and collect valid params
+// StructToParams - walk struct and collect valid params
 func StructToParams(paramStruct interface{}) ParamList {
 	var params ParamList
 	var keys reflect.Type

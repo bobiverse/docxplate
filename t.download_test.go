@@ -22,7 +22,7 @@ func TestDownloadFileInvalidCases(t *testing.T) {
 		if err == nil {
 			t.Fatalf("Expected an error, but got nil")
 		}
-		os.Remove(tmpFpath)
+		_ = os.Remove(tmpFpath)
 	})
 
 	t.Run("transport error", func(t *testing.T) {
@@ -45,7 +45,7 @@ func TestDownloadFileInvalidCases(t *testing.T) {
 		if err == nil {
 			t.Fatalf("Expected an error, but got nil")
 		}
-		os.Remove(tmpFpath)
+		_ = os.Remove(tmpFpath)
 	})
 
 	t.Run("non-200 status code", func(t *testing.T) {
@@ -58,13 +58,13 @@ func TestDownloadFileInvalidCases(t *testing.T) {
 		if !errors.Is(err, http.ErrMissingFile) {
 			t.Fatalf("Expected http.ErrMissingFile, but got: %v", err)
 		}
-		os.Remove(tmpFpath)
+		_ = os.Remove(tmpFpath)
 	})
 
 	t.Run("server read error", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Length", "2")
-			io.WriteString(w, "1") // #nosec G104
+			_, _ = io.WriteString(w, "1") // #nosec G104
 		}))
 		defer server.Close()
 
@@ -72,34 +72,34 @@ func TestDownloadFileInvalidCases(t *testing.T) {
 		if err == nil {
 			t.Fatalf("Expected an error, but got nil")
 		}
-		os.Remove(tmpFpath)
+		_ = os.Remove(tmpFpath)
 	})
 	//
-	//t.Run("create temp file error", func(t *testing.T) {
-	//	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-	//		io.WriteString(w, "test data")
-	//	}))
-	//	defer server.Close()
-	//
-	//	// Create a temporary directory with no write permissions
-	//	tempDir, err := os.MkdirTemp("", "downloadFileTest")
-	//	if err != nil {
-	//		t.Fatalf("Failed to create temporary directory: %v", err)
-	//	}
-	//	defer os.RemoveAll(tempDir)
-	//
-	//	if err := os.Chmod(tempDir, 0555); err != nil {
-	//		t.Fatalf("Failed to set permissions on temporary directory: %v", err)
-	//	}
-	//
-	//	// Temporarily replace os.TempDir function
-	//	originalTempDirFunc := os.TempDir
-	//	os.TempDir = func() string { return tempDir }
-	//	defer func() { os.TempDir = originalTempDirFunc }()
-	//
-	//	_, err = downloadFile(server.URL)
-	//	if err == nil {
-	//		t.Fatalf("Expected an error, but got nil")
-	//	}
-	//})
+	// t.Run("create temp file error", func(t *testing.T) {
+	// 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	// 		io.WriteString(w, "test data")
+	// 	}))
+	// 	defer server.Close()
+
+	// 	// Create a temporary directory with no write permissions
+	// 	tempDir, err := os.MkdirTemp("", "downloadFileTest")
+	// 	if err != nil {
+	// 		t.Fatalf("Failed to create temporary directory: %v", err)
+	// 	}
+	// 	defer os.RemoveAll(tempDir)
+
+	// 	if err := os.Chmod(tempDir, 0555); err != nil {
+	// 		t.Fatalf("Failed to set permissions on temporary directory: %v", err)
+	// 	}
+
+	// 	// Temporarily replace os.TempDir function
+	// 	originalTempDirFunc := os.TempDir
+	// 	os.TempDir = func() string { return tempDir }
+	// 	defer func() { os.TempDir = originalTempDirFunc }()
+
+	// 	_, err = downloadFile(server.URL)
+	// 	if err == nil {
+	// 		t.Fatalf("Expected an error, but got nil")
+	// 	}
+	// })
 }

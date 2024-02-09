@@ -78,7 +78,13 @@ func downloadFile(urlStr string) (tmpFile string, err error) {
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Printf("download: remove: %s", err)
+		}
+	}()
+
 	if resp.StatusCode != 200 {
 		return "", http.ErrMissingFile
 	}
@@ -88,7 +94,12 @@ func downloadFile(urlStr string) (tmpFile string, err error) {
 	if err != nil {
 		return
 	}
-	defer out.Close()
+	defer func() {
+		if err := out.Close(); err != nil {
+			log.Printf("download: close: %s", err)
+		}
+	}()
+
 	// Write body to file
 	_, err = io.Copy(out, resp.Body)
 	if err != nil {

@@ -28,9 +28,9 @@ var t *Template
 // Template ..
 type Template struct {
 	path string
-	file *os.File
-	zipw *zip.Writer     // zip writer
-	zipr *zip.ReadCloser // zip reader
+	// file *os.File
+	// zipw *zip.Writer // zip writer
+	zipr *zip.Reader // zip reader
 
 	// save all zip files here so we can build it again
 	files map[string]*zip.File
@@ -47,13 +47,31 @@ type Template struct {
 	params ParamList
 }
 
-// OpenTemplate .. docpath local file
+// OpenTemplate - docpath local file
 func OpenTemplate(docpath string) (*Template, error) {
+	var err error
+	docBytes, err := os.ReadFile(docpath)
+	if err != nil {
+		return nil, err
+	}
+
+	t, err := OpenTemplateWithBytes(docBytes)
+	if err != nil {
+		return nil, err
+	}
+
+	t.path = docpath
+	return t, nil
+
+}
+
+// OpenTemplateWithBytes - template from bytes
+// Credits to @dreamph for implementing this function
+func OpenTemplateWithBytes(docBytes []byte) (*Template, error) {
 	var err error
 
 	// Init doc template
 	t = &Template{
-		path:         docpath,
 		files:        map[string]*zip.File{},
 		documentRels: map[string]*zip.File{},
 		added:        map[string][]byte{},
@@ -61,7 +79,7 @@ func OpenTemplate(docpath string) (*Template, error) {
 	}
 
 	// Unzip
-	if t.zipr, err = zip.OpenReader(t.path); err != nil {
+	if t.zipr, err = zip.NewReader(bytes.NewReader(docBytes), int64(len(docBytes))); err != nil {
 		return nil, err
 	}
 
@@ -94,7 +112,13 @@ func OpenTemplateWithURL(docurl string) (tpl *Template, err error) {
 	if err != nil {
 		return nil, err
 	}
-	defer os.Remove(docpath)
+
+	defer func() {
+		if err := os.Remove(docpath); err != nil {
+			log.Printf("open url: remove: %s", err)
+		}
+	}()
+
 	tpl, err = OpenTemplate(docpath)
 	if err != nil {
 		return nil, err
@@ -568,7 +592,7 @@ func (t *Template) Bytes() ([]byte, error) {
 			log.Printf("Error writing [ %s ] to archive", fName)
 			continue
 		}
-		fw.Write(buf)
+		_, _ = fw.Write(buf)
 	}
 
 	zipErr := zipw.Close()
