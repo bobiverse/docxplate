@@ -3,6 +3,7 @@ package docxplate
 import (
 	"encoding/xml"
 	"fmt"
+	"log"
 	"os"
 	"path"
 	"strings"
@@ -13,14 +14,19 @@ var imgXMLTpl = "<w:pict><v:shape style='width:%dpt;height:%dpt'><v:imagedata r:
 // Process image placeholder - add file, rels and return replace val
 func processImage(img *Image) (imgXMLStr string, err error) {
 	var imgPath string
-	if img.Path != "" {
-		imgPath = img.Path
-	} else {
+
+	imgPath = img.Path // default
+	if img.Path == "" {
 		imgPath, err = downloadFile(img.URL)
 		if err != nil {
 			return
 		}
-		defer os.Remove(imgPath)
+
+		defer func() {
+			if err := os.Remove(imgPath); err != nil {
+				log.Printf("image process: remove: %s", err)
+			}
+		}()
 	}
 
 	// Add image to zip
