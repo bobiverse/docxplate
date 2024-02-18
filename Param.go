@@ -76,6 +76,13 @@ func NewParamFromRaw(raw []byte) *Param {
 	return p
 }
 
+// string placeholder replace
+func (p *Param) replaceIn(buf []byte) []byte {
+	buf = bytes.ReplaceAll(buf, []byte(p.Placeholder()), []byte(p.Value))
+	buf = bytes.ReplaceAll(buf, []byte(p.PlaceholderKey()), []byte(p.Key))
+	return buf
+}
+
 // SetValue - any value to string
 func (p *Param) SetValue(val interface{}) {
 	switch v := val.(type) {

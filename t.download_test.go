@@ -2,7 +2,6 @@ package docxplate
 
 import (
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -41,7 +40,7 @@ func TestDownloadFileInvalidCases(t *testing.T) {
 		defer server.Close()
 
 		tmpFpath, err := downloadFile(server.URL)
-		fmt.Println("remove tmp file", tmpFpath, server.URL)
+		// fmt.Println("remove tmp file", tmpFpath, server.URL)
 		if err == nil {
 			t.Fatalf("Expected an error, but got nil")
 		}

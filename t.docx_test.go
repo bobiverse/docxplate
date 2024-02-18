@@ -198,3 +198,18 @@ func TestDepthStructToParams(t *testing.T) {
 		log.Fatal(err)
 	}
 }
+
+func TestWatermark(t *testing.T) {
+	var user = User{
+		Name: "Walter",
+		Friends: []*User{
+			{Name: "Bob", Age: 28, ImageLocal: &docxplate.Image{Path: "images/avatar-4.png", Width: 25, Height: 25}},
+		},
+	}
+
+	tdoc, _ := docxplate.OpenTemplate("test-data/watermark.docx")
+	tdoc.Params(user)
+	if err := tdoc.ExportDocx("test-data/~test-watermark.docx"); err != nil {
+		log.Fatal(err)
+	}
+}

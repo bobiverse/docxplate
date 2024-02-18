@@ -50,7 +50,7 @@ type Template struct {
 // OpenTemplate - docpath local file
 func OpenTemplate(docpath string) (*Template, error) {
 	var err error
-	docBytes, err := os.ReadFile(docpath)
+	docBytes, err := os.ReadFile(docpath) // #nosec G304 - allowed filename variable here
 	if err != nil {
 		return nil, err
 	}
@@ -404,6 +404,16 @@ func (t *Template) replaceSingleParams(xnode *xmlNode, triggerParamOnly bool) {
 			return
 		}
 
+		// node params
+		t.params.Walk(func(p *Param) {
+			for i, attr := range n.Attrs {
+				if strings.Contains(attr.Value, "{{") {
+					n.Attrs[i].Value = string(p.replaceIn([]byte(attr.Value)))
+				}
+			}
+		})
+
+		// node contentt
 		if bytes.Contains(n.Content, []byte("{{")) {
 			// Try to replace on node that contains possible placeholder
 			t.params.Walk(func(p *Param) {
@@ -427,7 +437,7 @@ func (t *Template) replaceSingleParams(xnode *xmlNode, triggerParamOnly bool) {
 				// Repalce by type
 				switch p.Type {
 				case StringParam:
-					t.replaceStringParams(n, p)
+					t.replaceTextParam(n, p)
 				case ImageParam:
 					t.replaceImageParams(n, p)
 				}
@@ -436,11 +446,9 @@ func (t *Template) replaceSingleParams(xnode *xmlNode, triggerParamOnly bool) {
 	})
 }
 
-// String placeholder replace
-func (t *Template) replaceStringParams(xnode *xmlNode, param *Param) {
-	xnode.Content = bytes.ReplaceAll(xnode.Content, []byte(param.Placeholder()), []byte(param.Value))
-	xnode.Content = bytes.ReplaceAll(xnode.Content, []byte(param.PlaceholderKey()), []byte(param.Key))
-	return
+// wrapper for simple param replace func
+func (t *Template) replaceTextParam(xnode *xmlNode, param *Param) {
+	xnode.Content = param.replaceIn(xnode.Content)
 }
 
 // Image placeholder replace
@@ -469,7 +477,6 @@ func (t *Template) replaceImageParams(xnode *xmlNode, param *Param) {
 	// Empty the content before deleting to prevent reprocessing when params walk
 	xnode.Content = []byte("")
 	xnode.delete()
-	return
 }
 
 // Enchance some markup (removed when building XML in the end)

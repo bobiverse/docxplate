@@ -2,7 +2,7 @@ package docxplate
 
 import (
 	"bytes"
-	"crypto/md5"
+	"crypto/md5" // #nosec  G501 - allowed weak hash
 	"encoding/xml"
 	"fmt"
 	"io"
@@ -39,7 +39,7 @@ func structToXMLBytes(v interface{}) []byte {
 	// buf, err := xml.MarshalIndent(v, "", "  ")
 	buf, err := xml.Marshal(v)
 	if err != nil {
-		fmt.Printf("error: %v\n", err)
+		// fmt.Printf("error: %v\n", err)
 		return nil
 	}
 
@@ -74,7 +74,7 @@ func inSlice(a string, slice []string) bool {
 // Download url file
 func downloadFile(urlStr string) (tmpFile string, err error) {
 	// Get file
-	resp, err := http.Get(urlStr)
+	resp, err := http.Get(urlStr) // #nosec  G107 - allowed url variable here
 	if err != nil {
 		return "", err
 	}
@@ -89,8 +89,8 @@ func downloadFile(urlStr string) (tmpFile string, err error) {
 		return "", http.ErrMissingFile
 	}
 	// Create file
-	tmpFile = fmt.Sprintf("%x%s", md5.Sum([]byte(urlStr)), path.Ext(urlStr))
-	out, err := os.Create(tmpFile)
+	tmpFile = fmt.Sprintf("%x%s", md5.Sum([]byte(urlStr)), path.Ext(urlStr)) // #nosec  G401 - allowed weak hash here
+	out, err := os.Create(tmpFile)                                           // #nosec  G304 - allowed filename variable here
 	if err != nil {
 		return
 	}

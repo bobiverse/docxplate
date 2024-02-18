@@ -30,7 +30,7 @@ func processImage(img *Image) (imgXMLStr string, err error) {
 	}
 
 	// Add image to zip
-	imgBytes, err := os.ReadFile(imgPath)
+	imgBytes, err := os.ReadFile(imgPath) // #nosec  G304 - allowed filename as variable here
 	if err != nil {
 		return
 	}
