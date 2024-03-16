@@ -64,6 +64,66 @@ func TestPlaceholders(t *testing.T) {
 				Width:  25,
 				Height: 25,
 			},
+			{
+				Path:   "images/avatar-3.png",
+				Width:  25,
+				Height: 25,
+			},
+			{
+				Path:   "images/avatar-3.png",
+				Width:  25,
+				Height: 25,
+			},
+			{
+				Path:   "images/avatar-3.png",
+				Width:  25,
+				Height: 25,
+			},
+			{
+				Path:   "images/avatar-3.png",
+				Width:  25,
+				Height: 25,
+			},
+			{
+				Path:   "images/avatar-3.png",
+				Width:  25,
+				Height: 25,
+			},
+			{
+				Path:   "images/avatar-3.png",
+				Width:  25,
+				Height: 25,
+			},
+			{
+				Path:   "images/avatar-3.png",
+				Width:  25,
+				Height: 25,
+			},
+			{
+				Path:   "images/avatar-3.png",
+				Width:  25,
+				Height: 25,
+			},
+			{
+				Path:   "images/avatar-3.png",
+				Width:  25,
+				Height: 25,
+			},
+			{
+				Path:   "images/avatar-3.png",
+				Width:  25,
+				Height: 25,
+			},
+			{
+				Path:   "images/avatar-3.png",
+				Width:  25,
+				Height: 25,
+			},
+			{
+				Path:   "images/avatar-3.png",
+				Width:  25,
+				Height: 25,
+			},
 		},
 	}
 

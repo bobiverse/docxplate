@@ -33,6 +33,15 @@ type xmlNode struct {
 	isDeleted bool
 }
 
+func (xnode xmlNode) ContentHasPrefix(str string) bool {
+	splitContent :=bytes.Split(xnode.Content, []byte(str))
+	if len(splitContent) == 1{
+		return false
+	}
+	contentSuffix := splitContent[1]
+	return bytes.HasPrefix(contentSuffix, []byte{'.'}) || bytes.HasPrefix(contentSuffix, []byte{'}', '}'}) || bytes.HasPrefix(contentSuffix, []byte{' '})
+}
+
 // UnmarshalXML ..
 func (xnode *xmlNode) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	// n.Attrs = start.Attr

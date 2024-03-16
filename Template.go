@@ -422,7 +422,7 @@ func (t *Template) replaceSingleParams(xnode *xmlNode, triggerParamOnly bool) {
 					return
 				}
 				// Prefix check
-				if !bytes.Contains(n.Content, []byte(p.PlaceholderPrefix())) {
+				if !n.ContentHasPrefix(p.PlaceholderPrefix()) {
 					return
 				}
 				// Trigger: does placeholder have trigger
