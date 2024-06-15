@@ -5,9 +5,10 @@ import (
 	"encoding/xml"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 
-	"github.com/fatih/color"
+	"github.com/logrusorgru/aurora/v4"
 )
 
 // NodeSingleTypes - NB! sequence is important
@@ -34,8 +35,8 @@ type xmlNode struct {
 }
 
 func (xnode xmlNode) ContentHasPrefix(str string) bool {
-	splitContent :=bytes.Split(xnode.Content, []byte(str))
-	if len(splitContent) == 1{
+	splitContent := bytes.Split(xnode.Content, []byte(str))
+	if len(splitContent) == 1 {
 		return false
 	}
 	contentSuffix := splitContent[1]
@@ -126,6 +127,12 @@ func (xnode *xmlNode) isRowElement() bool {
 		return true
 	}
 	return false
+}
+
+// Single type
+// w-t, w-r
+func (xnode *xmlNode) isSingle() bool {
+	return slices.Contains[[]string](NodeSingleTypes, xnode.XMLName.Local)
 }
 
 // HaveParams - does node contents contains any param
@@ -246,6 +253,7 @@ func (xnode *xmlNode) delete() {
 	if index != -1 {
 		xnode.parent.Nodes[index] = nil
 	}
+	xnode.Nodes = nil
 	xnode.isDeleted = true
 }
 
@@ -259,15 +267,15 @@ func (xnode *xmlNode) closestUp(nodeTypes []string) *xmlNode {
 			continue
 		}
 
-		// color.Magenta("[%s] == [%s]", xnode.parent.Tag(), ntype)
+		// aurora.Magenta("[%s] == [%s]", xnode.parent.Tag(), ntype)
 		if xnode.parent.Tag() == ntype {
-			// color.Green("found parent: [%s] == [%s]", xnode.parent.Tag(), ntype)
+			// aurora.Green("found parent: [%s] == [%s]", xnode.parent.Tag(), ntype)
 			return xnode.parent
 		}
 
 		for _, n := range xnode.parent.Nodes {
 			if n.Tag() == ntype {
-				// color.Green("found parent: [%s] == [%s]", n.Tag(), ntype)
+				// aurora.Green("found parent: [%s] == [%s]", n.Tag(), ntype)
 				return n
 			}
 
@@ -284,6 +292,7 @@ func (xnode *xmlNode) closestUp(nodeTypes []string) *xmlNode {
 // ReplaceInContents - replace plain text contents with something
 func (xnode *xmlNode) ReplaceInContents(old, new []byte) []byte {
 	xnode.Walk(func(n *xmlNode) {
+
 		n.Content = bytes.ReplaceAll(n.Content, old, new)
 	})
 	return xnode.AllContents()
@@ -303,7 +312,7 @@ func (xnode *xmlNode) Tag() string {
 func (xnode *xmlNode) String() string {
 	s := fmt.Sprintf("#%d: ", xnode.index())
 	if xnode.isDeleted {
-		s += color.RedString(" !!DELETED!! ")
+		s += aurora.Red(" !!DELETED!! ").String()
 
 	}
 	s += fmt.Sprintf("-- %p -- ", xnode)
@@ -321,69 +330,68 @@ func (xnode *xmlNode) String() string {
 	return s
 }
 
-//
-//// Print tree of node and down
-// func (xnode *xmlNode) printTree(label string) {
-//	fmt.Printf("[ %s ]", label)
-//	fmt.Println("|" + strings.Repeat("-", 80))
-//
-//	if xnode == nil {
-//		color.Red("Empty node.")
-//		return
-//	}
-//	fmt.Printf("|%s |%p| %s\n", xnode.XMLName.Local, xnode, xnode.Content)
-//
-//	xnode.WalkTree(0, func(depth int, n *xmlNode) {
-//		s := "|"
-//		s += strings.Repeat(" ", depth*4)
-//
-//		// tag
-//		s += fmt.Sprintf("%-10s", n.XMLName.Local)
-//		if xnode.isNew {
-//			s = color.CyanString(s)
-//		}
-//		if xnode.isDeleted {
-//			s = color.HiRedString(s)
-//		}
-//
-//		// pointers
-//		s += fmt.Sprintf("|%p|", n)
-//		sptr := fmt.Sprintf("|%p| ", n.parent)
-//		if n.parent == nil {
-//			sptr = color.HiRedString(sptr)
-//		}
-//		s += sptr
-//
-//		if isListItem, listID := n.IsListItem(); isListItem {
-//			s += color.HiBlueString(" (List:%s) ", listID)
-//		}
-//
-//		if bytes.TrimSpace(n.Content) != nil {
-//			s += color.YellowString("[%s]", n.Content)
-//		} else if n.haveParam {
-//			s += color.HiMagentaString("<< empty param value >>")
-//		}
-//
-//		// s += color.CyanString(" -- %s", n.StylesString())
-//
-//		fmt.Println(s)
-//	})
-//
-//	fmt.Println("|" + strings.Repeat("-", 80))
-//}
-//
-// func (xnode *xmlNode) attrID() string {
-//	if xnode == nil {
-//		return ""
-//	}
-//
-//	for _, attr := range xnode.Attrs {
-//		if attr.Name.Local == "id" {
-//			return attr.Value
-//		}
-//	}
-//	return ""
-//}
+// Print tree of node and down
+func (xnode *xmlNode) printTree(label string) {
+	fmt.Printf("[ %s ]", label)
+	fmt.Println("|" + strings.Repeat("-", 80))
+
+	if xnode == nil {
+		aurora.Red("Empty node.")
+		return
+	}
+	fmt.Printf("|%s |%p| %s\n", xnode.XMLName.Local, xnode, xnode.Content)
+
+	xnode.WalkTree(0, func(depth int, n *xmlNode) {
+		s := "|"
+		s += strings.Repeat(" ", depth*4)
+
+		// tag
+		s += fmt.Sprintf("%-10s", n.XMLName.Local)
+		if xnode.isNew {
+			s = aurora.Cyan(s).String()
+		}
+		if xnode.isDeleted {
+			s = aurora.Red(s).String()
+		}
+
+		// pointers
+		s += fmt.Sprintf("|%p|", n)
+		sptr := fmt.Sprintf("|%p| ", n.parent)
+		if n.parent == nil {
+			sptr = aurora.Red(sptr).String()
+		}
+		s += sptr
+
+		if isListItem, listID := n.IsListItem(); isListItem {
+			s += fmt.Sprintf(" (List:%s) ", aurora.Blue(listID))
+		}
+
+		if bytes.TrimSpace(n.Content) != nil {
+			s += fmt.Sprintf("[%s]", aurora.Yellow(n.Content))
+		} else if n.HaveParams() {
+			s += aurora.Magenta("<< empty param value >>").String()
+		}
+
+		// s += aurora.Cyan(" -- %s", n.StylesString())
+
+		fmt.Println(s)
+	})
+
+	fmt.Println("|" + strings.Repeat("-", 80))
+}
+
+func (xnode *xmlNode) attrID() string {
+	if xnode == nil {
+		return ""
+	}
+
+	for _, attr := range xnode.Attrs {
+		if attr.Name.Local == "id" {
+			return attr.Value
+		}
+	}
+	return ""
+}
 
 // ^ > w-p > w-pPr > w-numPr > w-numId
 func (xnode *xmlNode) nodeBySelector(selector string) *xmlNode {
@@ -395,19 +403,19 @@ func (xnode *xmlNode) nodeBySelector(selector string) *xmlNode {
 		for _, n := range xnode.Nodes {
 			if n.Tag() == tag {
 				if len(tags[i:]) == 1 {
-					// color.HiGreen("FOUND: %s", tag)
+					// aurora.HiGreen("FOUND: %s", tag)
 					return n
 				}
 
 				selector = strings.Join(tags[i:], ">")
-				// color.Green("NEXT: %s", selector)
+				// aurora.Green("NEXT: %s", selector)
 
 				return n.nodeBySelector(selector)
 			}
 		}
 	}
 
-	// color.Red("Selector not found: [%s]", selector)
+	// aurora.Red("Selector not found: [%s]", selector)
 	return nil
 }
 

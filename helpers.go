@@ -35,7 +35,7 @@ func readerBytes(rdr io.ReadCloser) []byte {
 }
 
 // Encode struct to xml code string
-func structToXMLBytes(v interface{}) []byte {
+func structToXMLBytes(v any) []byte {
 	// buf, err := xml.MarshalIndent(v, "", "  ")
 	buf, err := xml.Marshal(v)
 	if err != nil {

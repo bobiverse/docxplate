@@ -52,7 +52,7 @@ type Param struct {
 }
 
 // NewParam ..
-func NewParam(key interface{}) *Param {
+func NewParam(key any) *Param {
 	p := &Param{
 		Key: fmt.Sprintf("%v", key),
 	}
@@ -84,7 +84,7 @@ func (p *Param) replaceIn(buf []byte) []byte {
 }
 
 // SetValue - any value to string
-func (p *Param) SetValue(val interface{}) {
+func (p *Param) SetValue(val any) {
 	switch v := val.(type) {
 	case string:
 		p.Value = v
@@ -239,7 +239,7 @@ func (p *Param) RunTrigger(xnode *xmlNode) {
 
 	n := xnode.closestUp(ntypes)
 	if n == nil || n.isDeleted {
-		// color.Red("EMPTY parent of %v", xnode.Tag())
+		// aurora.Red("EMPTY parent of %v", xnode.Tag())
 		return
 	}
 
@@ -253,7 +253,7 @@ func (p *Param) RunTrigger(xnode *xmlNode) {
 		for _, wpNode := range n.parent.Nodes {
 			isitem, listid := wpNode.IsListItem()
 			if !isitem || listid != listID {
-				// color.Red("--- %s [%s]", wpNode, wpNode.AllContents())
+				// aurora.Red("--- %s [%s]", wpNode, wpNode.AllContents())
 				continue
 			}
 			if p.Trigger.Command == TriggerCommandRemove {
@@ -266,7 +266,7 @@ func (p *Param) RunTrigger(xnode *xmlNode) {
 
 	// Simple cases
 	if p.Trigger.Command == TriggerCommandRemove {
-		// n.printTree("TRIGGER: " + p.Trigger.String() + " " + p.Trigger.Command)
+		// fmt.Printf("Trigger: [%s] [%s]\t Command=[%s]\n", aurora.Blue(p.AbsoluteKey), aurora.Magenta(p.Trigger.String()), aurora.BgMagenta(p.Trigger.Command))
 		n.Nodes = nil
 		n.delete()
 		return

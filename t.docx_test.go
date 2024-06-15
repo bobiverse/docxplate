@@ -16,6 +16,7 @@ type User struct {
 	Age                    int
 	Nicknames              []string
 	Friends                []*User
+	Motto                  string
 	BrokenStylePlaceholder string
 	TriggerRemove          string
 	ImageLocal             *docxplate.Image
@@ -128,10 +129,11 @@ func TestPlaceholders(t *testing.T) {
 	}
 
 	filenames := []string{
-		"user.template.docx",
 		"tables.docx",
 		"lists.docx",
 		"header-footer.docx",
+		"user.template-no-images.docx",
+		"user.template-with-images.docx",
 	}
 
 	for _, fname := range filenames {
@@ -195,12 +197,12 @@ func TestPlaceholders(t *testing.T) {
 				}
 
 				if !strings.Contains(plaintext, u.Name) {
-					t.Fatalf("[%s] User[%s] friends Name must be found: \n\n%s", fname, u.Name, tdoc.Plaintext())
+					t.Fatalf("[%s][%s] User[%s] friends Name must be found: \n\n%s", inType, fname, u.Name, tdoc.Plaintext())
 				}
 
 				years := fmt.Sprintf("%d y/o", u.Age)
 				if !strings.Contains(plaintext, years) {
-					t.Fatalf("[%s] User[%s] friends Age[%d] must be found: \n\n%s", fname, u.Name, u.Age, tdoc.Plaintext())
+					t.Fatalf("[%s][%s] User[%s] friends Age[%d] must be found: \n\n%s", inType, fname, u.Name, u.Age, tdoc.Plaintext())
 				}
 			}
 
@@ -235,19 +237,20 @@ func TestPlaceholders(t *testing.T) {
 
 func TestDepthStructToParams(t *testing.T) {
 	var user = User{
-		Name: "Alice",
-		Age:  27,
+		Name:  "Alice",
+		Age:   27,
+		Motto: "Always stay humble.",
 		Friends: []*User{
-			{Name: "Bob", Age: 28, Friends: []*User{
-				{Name: "Cecilia", Age: 29},
-				{Name: "Sun", Age: 999},
-				{Name: "Tony", Age: 999},
+			{Name: "Bob", Age: 28, Motto: "Be\nbrave,\nbe\nbold.", Friends: []*User{
+				{Name: "Cecilia", Age: 29, Motto: "Chase\nyour\ndreams."},
+				{Name: "Sun", Age: 999, Motto: ""},
+				{Name: "Tony", Age: 999, Motto: ""},
 			}},
-			{Name: "Den", Age: 30, Friends: []*User{
-				{Name: "Ben", Age: 999},
-				{Name: "Edgar", Age: 31},
-				{Name: "Jouny", Age: 999},
-				{Name: "Carrzy", Age: 999},
+			{Name: "Den", Age: 30, Motto: "Don't give up.", Friends: []*User{
+				{Name: "Ben", Age: 999, Motto: "Be brave, be bold as twice as Bob."},
+				{Name: "Edgar", Age: 31, Motto: "Embrace the moment."},
+				{Name: "Jouny", Age: 999, Motto: ""},
+				{Name: "Carrzy", Age: 999, Motto: "Chase your dreamzzz"},
 			}},
 		},
 	}
