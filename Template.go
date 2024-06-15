@@ -183,6 +183,8 @@ func (t *Template) fileToXMLStruct(fname string) *xmlNode {
 func (t *Template) Params(v interface{}) {
 	// t.params = collectParams("", v)
 	switch val := v.(type) {
+	case map[string]interface{}:
+		t.params = mapToParams(val)
 	case string:
 		t.params = JSONToParams([]byte(val))
 	case []byte:
