@@ -17,7 +17,7 @@ func (t *Template) bytesToXMLStruct(buf []byte) *xmlNode {
 	buf = bytes.ReplaceAll(buf, []byte("</v:"), []byte("</v-"))
 
 	xdocNode := &xmlNode{}
-	if err := xml.Unmarshal(buf, &xdocNode); err != nil {
+	if err := xml.Unmarshal(buf, xdocNode); err != nil {
 		log.Printf("fileToXMLStruct: %v", err)
 	}
 
@@ -29,10 +29,13 @@ func (t *Template) bytesToXMLStruct(buf []byte) *xmlNode {
 		if xnode.Tag() == "w-body" {
 			xnode.parent = xdocNode
 		}
-
-		for _, n := range xnode.Nodes {
-			n.parent = xnode
+		if xnode.childFirst != nil {
+			xnode.childFirst.iterate(func(node *xmlNode) bool {
+				node.parent = xnode
+				return false
+			})
 		}
+
 	})
 
 	// log.Printf("%s", structToXMLBytes(n))
@@ -71,13 +74,13 @@ func (t *Template) replaceImageParams(xnode *xmlNode, param *Param) {
 				parent:  xnode.parent,
 				isNew:   true,
 			}
-			xnode.parent.Nodes = append(xnode.parent.Nodes, contentNode)
+			xnode.add(contentNode)
 		}
 		// image node
 		if len(contentSlice)-i > 1 {
 			imgNode := t.bytesToXMLStruct([]byte(param.Value))
 			imgNode.parent = xnode.parent
-			xnode.parent.Nodes = append(xnode.parent.Nodes, imgNode)
+			xnode.add(imgNode)
 		}
 	}
 	// Empty the content before deleting to prevent reprocessing when params walk
@@ -121,32 +124,23 @@ func (t *Template) matchBrokenRightPlaceholder(content string) bool {
 	return t.matchBrokenPlaceholder(content, false)
 }
 
-func (t Template) GetContentPrefixList(content []byte) []string {
+func (t Template) GetAttrParam(attr string) []string {
 	var ret []string
 	var record strings.Builder
 	start := false
-	length := len(content)
-	for i, v := range content {
-		if i == 0 {
-			continue
-		}
-
-		if v == '{' && content[i-1] == '{' {
+	length := len(attr)
+	for i := 1; i < length-1; i++ {
+		if attr[i] == '{' && attr[i-1] == '{' {
 			start = true
 			continue
 		}
+		if start && (attr[i] == ' ' || (attr[i] == '}' && length-1 > i && attr[i+1] == '}')) {
+			ret = append(ret, record.String())
+			record.Reset()
+			start = false
+		}
 		if start {
-			if v == ' ' || (v == '}' && length-1 > i && content[i+1] == '}') {
-				ret = append(ret, record.String())
-				record.Reset()
-				start = false
-			}
-			if v == '.' {
-				ret = append(ret, record.String())
-				record.Reset()
-				continue
-			}
-			record.WriteByte(v)
+			record.WriteByte(attr[i])
 		}
 	}
 	return ret

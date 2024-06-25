@@ -41,18 +41,20 @@ func processImage(img *Image) (imgXMLStr string, err error) {
 	imgExt := strings.TrimLeft(strings.ToLower(path.Ext(imgPath)), ".")
 	contentTypesName := "[Content_Types].xml"
 	contentTypesNode := t.fileToXMLStruct(contentTypesName)
-	for _, node := range contentTypesNode.Nodes {
+	contentTypesNode.iterate(func(node *xmlNode) bool {
 		if strings.ToLower(node.Attr("Extension")) == imgExt {
 			isContainType = true
+			return true
 		}
-	}
+		return false
+	})
 	if !isContainType {
-		contentTypesNode.Nodes = append(contentTypesNode.Nodes, &xmlNode{
+		contentTypesNode.addSub(&xmlNode{
 			XMLName: xml.Name{
 				Space: "",
 				Local: "Default",
 			},
-			Attrs: []*xml.Attr{
+			Attrs: []xml.Attr{
 				{Name: xml.Name{Space: "", Local: "Extension"}, Value: imgExt},
 				{Name: xml.Name{Space: "", Local: "ContentType"}, Value: "image/" + imgExt},
 			},
@@ -70,13 +72,13 @@ func processImage(img *Image) (imgXMLStr string, err error) {
 	} else {
 		relNode = t.fileToXMLStruct(relName)
 	}
-	rid := fmt.Sprintf("rId%d", len(relNode.Nodes)+1)
-	relNode.Nodes = append(relNode.Nodes, &xmlNode{
+	rid := fmt.Sprintf("rId%d", relNode.childLenght+1)
+	relNode.addSub(&xmlNode{
 		XMLName: xml.Name{
 			Space: "",
 			Local: "Relationship",
 		},
-		Attrs: []*xml.Attr{
+		Attrs: []xml.Attr{
 			{Name: xml.Name{Space: "", Local: "Id"}, Value: rid},
 			{Name: xml.Name{Space: "", Local: "Type"}, Value: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image"},
 			{Name: xml.Name{Space: "", Local: "Target"}, Value: "media/" + imgPath},

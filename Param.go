@@ -49,6 +49,7 @@ type Param struct {
 	Trigger *ParamTrigger
 
 	RowPlaceholder string
+	Index          int //slice data index,expandPlaceholders function needs
 }
 
 // NewParam ..
@@ -238,7 +239,7 @@ func (p *Param) RunTrigger(xnode *xmlNode) {
 	}
 
 	n := xnode.closestUp(ntypes)
-	if n == nil || n.isDeleted {
+	if n == nil {
 		// aurora.Red("EMPTY parent of %v", xnode.Tag())
 		return
 	}
@@ -250,24 +251,23 @@ func (p *Param) RunTrigger(xnode *xmlNode) {
 	isListRemove = isListRemove || (isListItem && p.Trigger.Scope == TriggerScopeSection) // :section
 	if isListRemove && isListItem {
 		// find all list items as this
-		for _, wpNode := range n.parent.Nodes {
+		n.parent.childFirst.iterate(func(wpNode *xmlNode) bool {
 			isitem, listid := wpNode.IsListItem()
 			if !isitem || listid != listID {
 				// aurora.Red("--- %s [%s]", wpNode, wpNode.AllContents())
-				continue
+				return false
 			}
 			if p.Trigger.Command == TriggerCommandRemove {
-				wpNode.Nodes = nil
 				wpNode.delete()
 			}
-		}
+			return false
+		})
 		return
 	}
 
 	// Simple cases
 	if p.Trigger.Command == TriggerCommandRemove {
 		// fmt.Printf("Trigger: [%s] [%s]\t Command=[%s]\n", aurora.Blue(p.AbsoluteKey), aurora.Magenta(p.Trigger.String()), aurora.BgMagenta(p.Trigger.Command))
-		n.Nodes = nil
 		n.delete()
 		return
 	}
