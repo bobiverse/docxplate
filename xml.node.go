@@ -25,13 +25,38 @@ var NodeSectionTypes = []string{"w-tbl", "w-p"}
 
 type xmlNode struct {
 	XMLName xml.Name
-	Attrs   []xml.Attr `xml:",any,attr"`
-	Content []byte     `xml:",chardata"`
-	Nodes   []*xmlNode `xml:",any"`
+	Attrs   []*xml.Attr `xml:",any,attr"`
+	Content []byte      `xml:",chardata"`
+	Nodes   []*xmlNode  `xml:",any"`
 
 	parent    *xmlNode
 	isNew     bool // added recently
 	isDeleted bool
+}
+
+func (xnode xmlNode) GetContentPrefixList() (ret []string) {
+	var record strings.Builder
+	start := false
+	length := len(xnode.Content)
+	for i, v := range xnode.Content {
+		if i == 0 {
+			continue
+		}
+
+		if v == '{' && xnode.Content[i-1] == '{' {
+			start = true
+			continue
+		}
+		if start && (v == ' ' || (v == '}' && length-1 > i && xnode.Content[i+1] == '}')) {
+			ret = append(ret, record.String())
+			record.Reset()
+			start = false
+		}
+		if start {
+			record.WriteByte(v)
+		}
+	}
+	return
 }
 
 func (xnode xmlNode) ContentHasPrefix(str string) bool {
@@ -65,6 +90,29 @@ func (xnode *xmlNode) Walk(fn func(*xmlNode)) {
 		if n.Nodes != nil {
 			// continue only if have deeper nodes
 			n.Walk(fn)
+		}
+	}
+}
+
+// fn return true ,end walk
+func (xnode *xmlNode) WalkWithEnd(fn func(*xmlNode) bool) {
+	// Using index to iterate nodes instead of for-range to process dynamic nodes
+	for i := 0; i < len(xnode.Nodes); i++ {
+		n := xnode.Nodes[i]
+
+		if n == nil {
+			continue
+		}
+
+		end := fn(n) // do your custom stuff
+
+		if end {
+			continue
+		}
+
+		if n.Nodes != nil {
+			// continue only if have deeper nodes
+			n.WalkWithEnd(fn)
 		}
 	}
 }
@@ -197,7 +245,7 @@ func (xnode *xmlNode) cloneAndAppend() *xmlNode {
 	parent := xnode.parent
 
 	// new copy node
-	nnew := xnode.clone() // parent cleaned
+	nnew := xnode.clone(parent) //set parent
 	nnew.isDeleted = false
 	nnew.isNew = true
 
@@ -212,21 +260,12 @@ func (xnode *xmlNode) cloneAndAppend() *xmlNode {
 	// Insert into specific index
 	parent.Nodes = append(parent.Nodes[:i], append([]*xmlNode{nnew}, parent.Nodes[i:]...)...)
 
-	// cloned element have incorrect parents - so fixing it here
-	nnew.parent.Walk(func(nnew *xmlNode) {
-		for _, n := range nnew.Nodes {
-			if n != nil {
-				n.parent = nnew
-			}
-		}
-	})
-
 	return nnew
 }
 
 // Copy node as new and all childs as new too
 // no shared addresses as it would be by only copying it
-func (xnode *xmlNode) clone() *xmlNode {
+func (xnode *xmlNode) clone(parent *xmlNode) *xmlNode {
 	if xnode == nil {
 		return nil
 	}
@@ -236,9 +275,10 @@ func (xnode *xmlNode) clone() *xmlNode {
 	xnodeCopy.Nodes = nil
 	xnodeCopy.isDeleted = false
 	xnodeCopy.isNew = true
+	xnodeCopy.parent = parent
 
 	for _, n := range xnode.Nodes {
-		xnodeCopy.Nodes = append(xnodeCopy.Nodes, n.clone())
+		xnodeCopy.Nodes = append(xnodeCopy.Nodes, n.clone(xnodeCopy))
 	}
 
 	return xnodeCopy

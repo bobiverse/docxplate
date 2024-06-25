@@ -137,7 +137,7 @@ func OpenTemplateWithURL(docurl string) (tpl *Template, err error) {
 func (t *Template) Params(v any) {
 	// t.params = collectParams("", v)
 	switch val := v.(type) {
-	case map[string]interface{}:
+	case map[string]any:
 		t.params = mapToParams(val)
 	case string:
 		t.params = JSONToParams([]byte(val))
