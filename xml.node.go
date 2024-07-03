@@ -103,31 +103,6 @@ func (xnode xmlNode) GetContentPrefixList() (ret []string) {
 	return
 }
 
-func (xnode xmlNode) GetContentPrefixList() (ret []string) {
-	var record strings.Builder
-	start := false
-	length := len(xnode.Content)
-	for i, v := range xnode.Content {
-		if i == 0 {
-			continue
-		}
-
-		if v == '{' && xnode.Content[i-1] == '{' {
-			start = true
-			continue
-		}
-		if start && (v == ' ' || (v == '}' && length-1 > i && xnode.Content[i+1] == '}')) {
-			ret = append(ret, record.String())
-			record.Reset()
-			start = false
-		}
-		if start {
-			record.WriteByte(v)
-		}
-	}
-	return
-}
-
 func (xnode xmlNode) ContentHasPrefix(str string) bool {
 	splitContent := bytes.Split(xnode.Content, []byte(str))
 	if len(splitContent) == 1 {
@@ -236,29 +211,6 @@ func (xnode *xmlNode) walkWithEnd(fn func(*xmlNode) bool) {
 		}
 		return false
 	})
-}
-
-// fn return true ,end walk
-func (xnode *xmlNode) WalkWithEnd(fn func(*xmlNode) bool) {
-	// Using index to iterate nodes instead of for-range to process dynamic nodes
-	for i := 0; i < len(xnode.Nodes); i++ {
-		n := xnode.Nodes[i]
-
-		if n == nil {
-			continue
-		}
-
-		end := fn(n) // do your custom stuff
-
-		if end {
-			continue
-		}
-
-		if n.Nodes != nil {
-			// continue only if have deeper nodes
-			n.WalkWithEnd(fn)
-		}
-	}
 }
 
 // Walk down all nodes and do custom stuff with given function
