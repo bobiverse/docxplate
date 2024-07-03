@@ -5,6 +5,7 @@ import (
 	"log"
 	"reflect"
 	"regexp"
+	"strings"
 )
 
 // ParamList ..
@@ -243,4 +244,64 @@ func (params ParamList) Walk(fn func(*Param)) {
 		p.Level = 1
 		p.Walk(fn, p.Level+1)
 	}
+}
+
+func (params ParamList) WalkWithEnd(fn func(*Param) bool) {
+	for _, p := range params {
+		if fn(p) {
+			continue
+		}
+		p.Params.WalkWithEnd(fn)
+	}
+}
+
+func (p ParamList) FindAllByKey(key string) []*Param {
+	keySlice := strings.Split(key, ".")
+	var ret []*Param
+	p.findAllByKey(nil, nil, 0, 1, keySlice, &ret)
+	return ret
+}
+
+func (p ParamList) findAllByKey(privParamList, paramList []int, offset, depth int, key []string, params *[]*Param) ([]int, int) {
+	if depth > len(key) {
+		return nil, 0
+	}
+	currLev := strings.Join(key[:depth], ".")
+	for i, param := range p {
+		curr := make([]int, len(paramList))
+		copy(curr, paramList)
+		if param.parent != nil && param.parent.Type == SliceParam {
+			curr = append(curr, i+1)
+		}
+		if param.Type == StructParam {
+			privParamList, offset = param.Params.findAllByKey(privParamList, curr, offset, depth+1, key, params)
+		} else {
+			if param.CompactKey == currLev || param.AbsoluteKey == currLev {
+				if param.Type == SliceParam {
+					privParamList, offset = param.Params.findAllByKey(privParamList, curr, offset, depth, key, params)
+					continue
+				}
+				if depth == len(key) {
+					index := 1
+					if len(curr) > 0 {
+						index = curr[len(curr)-1]
+						if len(curr) == len(privParamList) {
+							for i := range curr[:len(curr)-1] {
+								if privParamList[i] != curr[i] {
+									offset += privParamList[len(privParamList)-1]
+									break
+								}
+							}
+						}
+					}
+					param.Index = index + offset
+					privParamList = curr
+					*params = append(*params, param)
+				} else {
+					privParamList, offset = param.Params.findAllByKey(privParamList, curr, offset, depth+1, key, params)
+				}
+			}
+		}
+	}
+	return privParamList, offset
 }

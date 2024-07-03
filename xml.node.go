@@ -24,14 +24,58 @@ var NodeRowTypes = []string{"w-tr", "w-p"}
 var NodeSectionTypes = []string{"w-tbl", "w-p"}
 
 type xmlNode struct {
-	XMLName xml.Name
-	Attrs   []*xml.Attr `xml:",any,attr"`
-	Content []byte      `xml:",chardata"`
-	Nodes   []*xmlNode  `xml:",any"`
+	XMLName     xml.Name
+	Attrs       []xml.Attr `xml:",any,attr"`
+	Content     []byte     `xml:",chardata"`
+	childFirst  *xmlNode
+	childLast   *xmlNode
+	next        *xmlNode
+	priv        *xmlNode
+	parent      *xmlNode
+	childLenght int
+	isNew       bool // added recently
+}
 
-	parent    *xmlNode
-	isNew     bool // added recently
-	isDeleted bool
+func (xnode *xmlNode) addSub(n *xmlNode) {
+	xnode.childLenght++
+	if xnode.childFirst == nil {
+		xnode.childFirst = n
+		xnode.childLast = n
+		return
+	}
+	xnode.childLast.next = n
+	n.priv = xnode.childLast
+	xnode.childLast = n
+
+}
+
+func (xnode *xmlNode) add(n *xmlNode) {
+	if xnode.parent == nil {
+		nn := xnode
+		for nn.next != nil {
+			nn = nn.next
+		}
+		nn.next = n
+		n.priv = nn
+		return
+	}
+	xnode.parent.addSub(n)
+}
+
+func (xnode *xmlNode) iterate(fn func(node *xmlNode) bool) {
+	if xnode == nil {
+		return
+	}
+	n := xnode
+	if fn(n) {
+		return
+	}
+	for n.next != nil {
+		n = n.next
+		if fn(n) {
+			break
+		}
+	}
 }
 
 func (xnode xmlNode) GetContentPrefixList() (ret []string) {
@@ -71,77 +115,133 @@ func (xnode xmlNode) ContentHasPrefix(str string) bool {
 // UnmarshalXML ..
 func (xnode *xmlNode) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	// n.Attrs = start.Attr
-	type x xmlNode
-	return d.DecodeElement((*x)(xnode), &start)
+	xnode.Attrs = start.Attr
+	xnode.XMLName = start.Name
+	n := xnode
+	for {
+		token, err := d.Token()
+		if err != nil {
+			break
+		}
+		switch t := token.(type) {
+		case xml.StartElement:
+			sub := &xmlNode{
+				XMLName: t.Name,
+				Attrs:   t.Attr,
+				parent:  n,
+			}
+			n.addSub(sub)
+			n = sub
+		case xml.EndElement:
+			n = n.parent
+		case xml.CharData:
+			n.Content = t.Copy()
+		}
+	}
+	return nil
+}
+
+// MarshalXML ..
+func (xnode *xmlNode) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
+	// n.Attrs = start.Attr
+	defer e.Close()
+	return xnode.XMLEncode(e)
+
+}
+
+func (xnode *xmlNode) XMLEncode(e *xml.Encoder) error {
+	err := e.EncodeToken(xml.StartElement{
+		Name: xnode.XMLName,
+		Attr: xnode.Attrs,
+	})
+	if err != nil {
+		return err
+	}
+	if len(xnode.Content) != 0 {
+		err = e.EncodeToken(xml.CharData(xnode.Content))
+		if err != nil {
+			return err
+		}
+	}
+	if xnode.childFirst != nil {
+		xnode.childFirst.iterate(func(node *xmlNode) bool {
+			err = node.XMLEncode(e)
+			return err != nil
+		})
+	}
+
+	if err != nil {
+		return err
+	}
+	return e.EncodeToken(xml.EndElement{
+		Name: xnode.XMLName,
+	})
 }
 
 // Walk down all nodes and do custom stuff with given function
 func (xnode *xmlNode) Walk(fn func(*xmlNode)) {
-	// Using index to iterate nodes instead of for-range to process dynamic nodes
-	for i := 0; i < len(xnode.Nodes); i++ {
-		n := xnode.Nodes[i]
-
-		if n == nil {
-			continue
-		}
-
-		fn(n) // do your custom stuff
-
-		if n.Nodes != nil {
-			// continue only if have deeper nodes
-			n.Walk(fn)
-		}
+	if xnode.childFirst == nil {
+		return
 	}
+	xnode.childFirst.walk(fn)
+}
+
+func (xnode *xmlNode) walk(fn func(*xmlNode)) {
+	xnode.iterate(func(node *xmlNode) bool {
+		fn(node)
+		if node.childFirst != nil {
+			node.childFirst.walk(fn)
+		}
+		return false
+	})
 }
 
 // fn return true ,end walk
 func (xnode *xmlNode) WalkWithEnd(fn func(*xmlNode) bool) {
-	// Using index to iterate nodes instead of for-range to process dynamic nodes
-	for i := 0; i < len(xnode.Nodes); i++ {
-		n := xnode.Nodes[i]
-
-		if n == nil {
-			continue
-		}
-
-		end := fn(n) // do your custom stuff
-
-		if end {
-			continue
-		}
-
-		if n.Nodes != nil {
-			// continue only if have deeper nodes
-			n.WalkWithEnd(fn)
-		}
+	if xnode.childFirst == nil {
+		return
 	}
+	xnode.childFirst.walkWithEnd(fn)
+}
+
+func (xnode *xmlNode) walkWithEnd(fn func(*xmlNode) bool) {
+	xnode.iterate(func(node *xmlNode) bool {
+		if (!fn(node)) && node.childFirst != nil {
+			node.childFirst.walkWithEnd(fn)
+		}
+		return false
+	})
 }
 
 // Walk down all nodes and do custom stuff with given function
 func (xnode *xmlNode) WalkTree(depth int, fn func(int, *xmlNode)) {
-	for _, n := range xnode.Nodes {
-		if n == nil {
-			continue
-		}
-
-		fn(depth+1, n) // do your custom stuff
-
-		if n.Nodes != nil {
-			n.WalkTree(depth+1, fn)
-		}
+	if xnode.childFirst == nil {
+		return
 	}
+	xnode.childFirst.walkTree(depth, fn)
+}
+
+func (xnode *xmlNode) walkTree(depth int, fn func(int, *xmlNode)) {
+	xnode.iterate(func(node *xmlNode) bool {
+		fn(depth, xnode)
+		if node.childFirst != nil {
+			fn(depth+1, node.childFirst)
+		}
+		return false
+	})
 }
 
 // Contents - return contents of this and all childs contents merge
 func (xnode *xmlNode) AllContents() []byte {
-	if xnode == nil || xnode.isDeleted {
+	if xnode == nil {
 		return nil
 	}
-
 	buf := xnode.Content
+
 	xnode.Walk(func(n *xmlNode) {
 		buf = append(buf, n.Content...)
 	})
+
 	return buf
 }
 
@@ -228,37 +328,34 @@ func (xnode *xmlNode) AnyChildContains(buf []byte) bool {
 //}
 
 // index of element inside parent.Nodes slice
-func (xnode *xmlNode) index() int {
-	if xnode != nil && xnode.parent != nil {
-		for i, n := range xnode.parent.Nodes {
-			if xnode == n {
-				return i
-			}
-		}
-	}
-	return -1
-}
+// func (xnode *xmlNode) index() int {
+// 	if xnode != nil && xnode.parent != nil {
+// 		for i, n := range xnode.parent.Nodes {
+// 			if xnode == n {
+// 				return i
+// 			}
+// 		}
+// 	}
+// 	return -1
+// }
 
 // Clone and Add after this
 // return new xmlNode
 func (xnode *xmlNode) cloneAndAppend() *xmlNode {
-	parent := xnode.parent
-
+	if xnode == nil {
+		return xnode
+	}
 	// new copy node
-	nnew := xnode.clone(parent) //set parent
-	nnew.isDeleted = false
+	nnew := xnode.clone(xnode.parent) //set parent
 	nnew.isNew = true
 
-	// Find node index in parent hierarchy and chose next index as copy place
-	i := xnode.index()
-	if i == -1 {
-		// Return existing instance to avoid nil errors
-		// But this node not added to xml structure list, so dissapears in output
-		return nnew
+	tmp := xnode.next
+	xnode.next = nnew
+	nnew.priv = xnode
+	nnew.next = tmp
+	if tmp != nil {
+		tmp.priv = nnew
 	}
-
-	// Insert into specific index
-	parent.Nodes = append(parent.Nodes[:i], append([]*xmlNode{nnew}, parent.Nodes[i:]...)...)
 
 	return nnew
 }
@@ -270,15 +367,18 @@ func (xnode *xmlNode) clone(parent *xmlNode) *xmlNode {
 		return nil
 	}
 
-	xnodeCopy := &xmlNode{}
-	*xnodeCopy = *xnode
-	xnodeCopy.Nodes = nil
-	xnodeCopy.isDeleted = false
-	xnodeCopy.isNew = true
-	xnodeCopy.parent = parent
-
-	for _, n := range xnode.Nodes {
-		xnodeCopy.Nodes = append(xnodeCopy.Nodes, n.clone(xnodeCopy))
+	xnodeCopy := &xmlNode{
+		XMLName: xnode.XMLName,
+		Attrs:   xnode.Attrs,
+		Content: xnode.Content,
+		isNew:   true,
+		parent:  parent,
+	}
+	if xnode.childFirst != nil {
+		xnode.childFirst.iterate(func(node *xmlNode) bool {
+			xnodeCopy.addSub(node.clone(xnodeCopy))
+			return false
+		})
 	}
 
 	return xnodeCopy
@@ -286,39 +386,48 @@ func (xnode *xmlNode) clone(parent *xmlNode) *xmlNode {
 
 // Delete node
 func (xnode *xmlNode) delete() {
-	// xnode.printTree("Delete")
-
-	// remove from list
-	index := xnode.index()
-	if index != -1 {
-		xnode.parent.Nodes[index] = nil
+	xnode.childLenght = 0
+	xnode.childFirst = nil
+	xnode.childLast = nil
+	if xnode.parent != nil {
+		xnode.parent.childLenght--
+		if xnode.parent.childFirst == xnode {
+			xnode.parent.childFirst = xnode.next
+		}
+		if xnode.parent.childLast == xnode {
+			xnode.parent.childLast = xnode.priv
+		}
 	}
-	xnode.Nodes = nil
-	xnode.isDeleted = true
+	if xnode.priv != nil {
+		xnode.priv.next = xnode.next
+	}
+	if xnode.next != nil {
+		xnode.next.priv = xnode.priv
+	}
 }
 
 // Find closest parent way up by node type
 func (xnode *xmlNode) closestUp(nodeTypes []string) *xmlNode {
+	if xnode.parent == nil {
+		return nil
+	}
+	var n *xmlNode
 	for _, ntype := range nodeTypes {
-		if xnode.parent == nil {
-			continue
-		}
-		if xnode.parent.isDeleted {
-			continue
-		}
 
 		// aurora.Magenta("[%s] == [%s]", xnode.parent.Tag(), ntype)
 		if xnode.parent.Tag() == ntype {
 			// aurora.Green("found parent: [%s] == [%s]", xnode.parent.Tag(), ntype)
 			return xnode.parent
 		}
-
-		for _, n := range xnode.parent.Nodes {
-			if n.Tag() == ntype {
-				// aurora.Green("found parent: [%s] == [%s]", n.Tag(), ntype)
-				return n
+		xnode.parent.childFirst.iterate(func(node *xmlNode) bool {
+			if node.Tag() == ntype {
+				n = node
+				return true
 			}
-
+			return false
+		})
+		if n != nil {
+			return n
 		}
 
 		if pn := xnode.parent.closestUp([]string{ntype}); pn != nil {
@@ -332,7 +441,6 @@ func (xnode *xmlNode) closestUp(nodeTypes []string) *xmlNode {
 // ReplaceInContents - replace plain text contents with something
 func (xnode *xmlNode) ReplaceInContents(old, new []byte) []byte {
 	xnode.Walk(func(n *xmlNode) {
-
 		n.Content = bytes.ReplaceAll(n.Content, old, new)
 	})
 	return xnode.AllContents()
@@ -350,11 +458,7 @@ func (xnode *xmlNode) Tag() string {
 // String get node as string for debugging purposes
 // prints useful information
 func (xnode *xmlNode) String() string {
-	s := fmt.Sprintf("#%d: ", xnode.index())
-	if xnode.isDeleted {
-		s += aurora.Red(" !!DELETED!! ").String()
-
-	}
+	var s string
 	s += fmt.Sprintf("-- %p -- ", xnode)
 	s += fmt.Sprintf("%s: ", xnode.Tag())
 
@@ -363,8 +467,7 @@ func (xnode *xmlNode) String() string {
 	}
 
 	s += fmt.Sprintf("[Content:%s]", xnode.Content)
-	s += fmt.Sprintf(" %3d", len(xnode.Nodes))
-	// s += fmt.Sprintf("[%s]", xnode.AllContents())
+	s += fmt.Sprintf("[%s]", xnode.AllContents())
 	s += fmt.Sprintf("\tParent: %s", xnode.parent.Tag())
 	// s += fmt.Sprintf("\t-- %s", xnode.StylesString())
 	return s
@@ -389,9 +492,6 @@ func (xnode *xmlNode) printTree(label string) {
 		s += fmt.Sprintf("%-10s", n.XMLName.Local)
 		if xnode.isNew {
 			s = aurora.Cyan(s).String()
-		}
-		if xnode.isDeleted {
-			s = aurora.Red(s).String()
 		}
 
 		// pointers
@@ -438,25 +538,27 @@ func (xnode *xmlNode) nodeBySelector(selector string) *xmlNode {
 	selector = strings.TrimSpace(selector)
 	selector = strings.ReplaceAll(selector, " ", "")
 	tags := strings.Split(selector, ">")
-
+	var n *xmlNode
 	for i, tag := range tags {
-		for _, n := range xnode.Nodes {
-			if n.Tag() == tag {
+		xnode.childFirst.iterate(func(node *xmlNode) bool {
+			if node.Tag() == tag {
 				if len(tags[i:]) == 1 {
-					// aurora.HiGreen("FOUND: %s", tag)
-					return n
+					n = node
+					return true
 				}
-
 				selector = strings.Join(tags[i:], ">")
 				// aurora.Green("NEXT: %s", selector)
-
-				return n.nodeBySelector(selector)
+				n = node.nodeBySelector(selector)
+				if n != nil {
+					return true
+				}
 			}
-		}
+			return false
+		})
 	}
 
 	// aurora.Red("Selector not found: [%s]", selector)
-	return nil
+	return n
 }
 
 // get attribute value

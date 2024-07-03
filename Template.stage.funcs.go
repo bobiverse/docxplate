@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/xml"
 	"strings"
+	"sync"
 )
 
 // Collect and trigger placeholders with trigger but unset in `t.params`
@@ -44,157 +45,107 @@ func (t *Template) triggerMissingParams(xnode *xmlNode) {
 
 // Expand complex placeholders
 func (t *Template) expandPlaceholders(xnode *xmlNode) {
-	type xmlNodeContent struct {
-		node     *xmlNode
-		contents []byte
+	if t.params == nil {
+		return
 	}
-	prefixNodeMap := map[string][]xmlNodeContent{}
 	xnode.WalkWithEnd(func(nrow *xmlNode) bool {
+		var once sync.Once
 		if nrow.isNew {
 			return false
 		}
 		if !nrow.isRowElement() {
 			return false
 		}
-		contents := nrow.AllContents()
-		prefixList := t.GetContentPrefixList(contents)
-		for _, prefix := range prefixList {
-			prefixNodeMap[prefix] = append(prefixNodeMap[prefix], xmlNodeContent{
-				contents: contents,
-				node:     nrow,
-			})
-		}
-		return true
-	})
-	t.params.Walk(func(p *Param) {
-		if p.Type != SliceParam {
-			return
-		}
-
-		prefixes := []string{
-			p.AbsoluteKey,
-			p.ToCompact(p.AbsoluteKey),
-		}
-		if prefixes[0] == prefixes[1] {
-			prefixes = prefixes[:1]
-		}
 		var max int
-		for _, prefix := range prefixes {
-			nodeList, ok := prefixNodeMap[prefix]
-			if !ok {
+		contents := nrow.AllContents()
+		rowParams := rowParams(contents)
+		rowPlaceholders := make(map[string]*placeholder)
+		for _, rowParam := range rowParams {
+			var placeholderType placeholderType
+			if len(rowParam.Separator) > 0 {
+				placeholderType = inlinePlaceholder
+			} else {
+				placeholderType = rowPlaceholder
+			}
+
+			var trigger string
+			if rowParam.Trigger != nil {
+				trigger = " " + rowParam.Trigger.String()
+			}
+
+			paramData := t.params.FindAllByKey(rowParam.AbsoluteKey)
+			if len(paramData) == 0 {
 				continue
 			}
-			for i := range nodeList {
-				node := nodeList[i]
-				nrow := node.node
-				rowParams := rowParams(node.contents)
-				rowPlaceholders := make(map[string]*placeholder)
-				// Collect placeholder that for expansion
-				for _, rowParam := range rowParams {
-					var placeholderType placeholderType
-					if len(rowParam.Separator) > 0 {
-						placeholderType = inlinePlaceholder
-					} else {
-						placeholderType = rowPlaceholder
-					}
+			placeholders := make([]string, paramData[len(paramData)-1].Index)
 
-					var trigger string
-					if rowParam.Trigger != nil {
-						trigger = " " + rowParam.Trigger.String()
+			for _, param := range paramData {
+				placeholders[param.Index-1] = "{{" + param.AbsoluteKey + trigger + "}}"
+			}
+			rowPlaceholders[rowParam.RowPlaceholder] = &placeholder{
+				Type:         placeholderType,
+				Placeholders: placeholders,
+				Separator:    strings.TrimLeft(rowParam.Separator, " "),
+			}
+			if max < len(placeholders) {
+				max = len(placeholders)
+			}
+		}
+		nnews := make([]*xmlNode, max)
+		for oldPlaceholder, newPlaceholder := range rowPlaceholders {
+			switch newPlaceholder.Type {
+			case inlinePlaceholder:
+				nrow.Walk(func(n *xmlNode) {
+					if !inSlice(n.XMLName.Local, []string{"w-t"}) || len(n.Content) == 0 {
+						return
 					}
+					n.Content = bytes.ReplaceAll(n.Content, []byte(oldPlaceholder), []byte(strings.Join(newPlaceholder.Placeholders, newPlaceholder.Separator)))
+				})
+			case rowPlaceholder:
+				defer once.Do(func() {
+					nrow.delete()
+				})
+				for i := max - 1; i >= 0; i-- {
+					if nnews[i] == nil {
+						nnews[i] = nrow.cloneAndAppend()
+					}
+					nnews[i].Walk(func(n *xmlNode) {
+						if !inSlice(n.XMLName.Local, []string{"w-t"}) || len(n.Content) == 0 {
+							return
+						}
+						replaceData := oldPlaceholder
+						if i < len(newPlaceholder.Placeholders) && newPlaceholder.Placeholders[i] != "" {
+							replaceData = newPlaceholder.Placeholders[i]
+						}
+						n.Content = bytes.ReplaceAll(n.Content, []byte(oldPlaceholder), []byte(replaceData))
 
-					var isMatch bool
-					var index = -1
-					currentLevel := p.Level
-					placeholders := make([]string, 0, len(p.Params))
-					p.WalkFunc(func(p *Param) {
-						if p.Level == currentLevel+1 {
-							index++
-						}
-						if rowParam.AbsoluteKey == p.CompactKey {
-							isMatch = true
-							placeholders = append(placeholders, "{{"+p.AbsoluteKey+trigger+"}}")
-						}
 					})
-
-					if isMatch {
-						rowPlaceholders[rowParam.RowPlaceholder] = &placeholder{
-							Type:         placeholderType,
-							Placeholders: placeholders,
-							Separator:    strings.TrimLeft(rowParam.Separator, " "),
-						}
-
-						if max < len(placeholders) {
-							max = len(placeholders)
-						}
-					}
-				}
-				// Expand placeholder exactly
-				nnews := make([]*xmlNode, max, max)
-				for oldPlaceholder, newPlaceholder := range rowPlaceholders {
-					switch newPlaceholder.Type {
-					case inlinePlaceholder:
-						nrow.Walk(func(n *xmlNode) {
-							if !inSlice(n.XMLName.Local, []string{"w-t"}) || len(n.Content) == 0 {
-								return
-							}
-							n.Content = bytes.ReplaceAll(n.Content, []byte(oldPlaceholder), []byte(strings.Join(newPlaceholder.Placeholders, newPlaceholder.Separator)))
-						})
-					case rowPlaceholder:
-						defer func() {
-							nrow.delete()
-						}()
-						for i, placeholder := range newPlaceholder.Placeholders {
-							if nnews[i] == nil {
-								nnews[i] = nrow.cloneAndAppend()
-							}
-							nnews[i].Walk(func(n *xmlNode) {
-								if !inSlice(n.XMLName.Local, []string{"w-t"}) || len(n.Content) == 0 {
-									return
-								}
-								n.Content = bytes.ReplaceAll(n.Content, []byte(oldPlaceholder), []byte(placeholder))
-							})
-						}
-					}
 				}
 			}
 		}
-	})
-
-	// Cloned nodes are marked as new by default.
-	// After expanding mark as old so next operations doesn't ignore them
-	xnode.Walk(func(n *xmlNode) {
-		n.isNew = false
+		return true
 	})
 }
 
 // Replace single params by type
 func (t *Template) replaceSingleParams(xnode *xmlNode, triggerParamOnly bool) {
-	replaceAttr := []*xml.Attr{}
-	xnodeList := []*xmlNode{}
-	xnode.Walk(func(n *xmlNode) {
-		if n == nil || n.isDeleted {
-			return
-		}
-		for _, attr := range n.Attrs {
-			if strings.Contains(attr.Value, "{{") {
-				replaceAttr = append(replaceAttr, attr)
-			}
-		}
-		xnodeList = append(xnodeList, n)
-	})
 	paramAbsoluteKeyMap := map[string]*Param{}
 	t.params.Walk(func(p *Param) {
-		for _, v := range replaceAttr {
-			v.Value = string(p.replaceIn([]byte(v.Value)))
-		}
 		if p.Type != StringParam && p.Type != ImageParam {
 			return
 		}
 		paramAbsoluteKeyMap[p.AbsoluteKey] = p
 	})
-	for i := range xnodeList {
-		n := xnodeList[i]
+	xnode.Walk(func(n *xmlNode) {
+		for i := range n.Attrs {
+			for _, key := range t.GetAttrParam(n.Attrs[i].Value) {
+				p, ok := paramAbsoluteKeyMap[key]
+				if !ok {
+					continue
+				}
+				n.Attrs[i].Value = string(p.replaceIn([]byte(n.Attrs[i].Value)))
+			}
+		}
 		for _, key := range n.GetContentPrefixList() {
 			p, ok := paramAbsoluteKeyMap[key]
 			if !ok {
@@ -202,13 +153,12 @@ func (t *Template) replaceSingleParams(xnode *xmlNode, triggerParamOnly bool) {
 			}
 			t.replaceAndRunTrigger(p, n, triggerParamOnly)
 		}
-	}
+	})
 }
 
 func (t *Template) replaceAndRunTrigger(p *Param, n *xmlNode, triggerParamOnly bool) {
 	// Trigger: does placeholder have trigger
 	if p.Trigger = p.extractTriggerFrom(n.Content); p.Trigger != nil {
-		// if
 		defer func() {
 			p.RunTrigger(n)
 		}()
@@ -240,9 +190,8 @@ func (t *Template) enhanceMarkup(xnode *xmlNode) {
 		if !isListItem {
 			return
 		}
-
 		// n.XMLName.Local = "w-item"
-		n.Attrs = append(n.Attrs, &xml.Attr{
+		n.Attrs = append(n.Attrs, xml.Attr{
 			Name:  xml.Name{Local: "list-id"},
 			Value: listID,
 		})
@@ -319,7 +268,6 @@ func (t *Template) fixBrokenPlaceholders(xnode *xmlNode) {
 				// fmt.Printf("OK [%s] + [%s]\n", aurora.Green(brokenNode.AllContents()), aurora.Green(n.AllContents()))
 				brokenNode.Content = append(brokenNode.Content, n.AllContents()...)
 				// aurora.Magenta("[%s] %v -- %v -- %v -- %v", brokenNode.Content, brokenNode.Tag(), brokenNode.parent.Tag(), brokenNode.parent.parent.Tag(), brokenNode.parent.parent.parent.Tag())
-				n.Nodes = nil
 				n.delete()
 				return
 			}
