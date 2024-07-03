@@ -54,7 +54,7 @@ func processImage(img *Image) (imgXMLStr string, err error) {
 				Space: "",
 				Local: "Default",
 			},
-			Attrs: []xml.Attr{
+			Attrs: []*xml.Attr{
 				{Name: xml.Name{Space: "", Local: "Extension"}, Value: imgExt},
 				{Name: xml.Name{Space: "", Local: "ContentType"}, Value: "image/" + imgExt},
 			},
@@ -78,7 +78,7 @@ func processImage(img *Image) (imgXMLStr string, err error) {
 			Space: "",
 			Local: "Relationship",
 		},
-		Attrs: []xml.Attr{
+		Attrs: []*xml.Attr{
 			{Name: xml.Name{Space: "", Local: "Id"}, Value: rid},
 			{Name: xml.Name{Space: "", Local: "Type"}, Value: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image"},
 			{Name: xml.Name{Space: "", Local: "Target"}, Value: "media/" + imgPath},
