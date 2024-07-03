@@ -153,48 +153,7 @@ func (t *Template) replaceSingleParams(xnode *xmlNode, triggerParamOnly bool) {
 			}
 			t.replaceAndRunTrigger(p, n, triggerParamOnly)
 		}
-		xnodeList = append(xnodeList, n)
 	})
-	paramAbsoluteKeyMap := map[string]*Param{}
-	t.params.Walk(func(p *Param) {
-		for _, v := range replaceAttr {
-			v.Value = string(p.replaceIn([]byte(v.Value)))
-		}
-		if p.Type != StringParam && p.Type != ImageParam {
-			return
-		}
-		paramAbsoluteKeyMap[p.AbsoluteKey] = p
-	})
-	for i := range xnodeList {
-		n := xnodeList[i]
-		for _, key := range n.GetContentPrefixList() {
-			p, ok := paramAbsoluteKeyMap[key]
-			if !ok {
-				continue
-			}
-			t.replaceAndRunTrigger(p, n, triggerParamOnly)
-		}
-	}
-}
-
-func (t *Template) replaceAndRunTrigger(p *Param, n *xmlNode, triggerParamOnly bool) {
-	// Trigger: does placeholder have trigger
-	if p.Trigger = p.extractTriggerFrom(n.Content); p.Trigger != nil {
-		// if
-		defer func() {
-			p.RunTrigger(n)
-		}()
-	}
-	if triggerParamOnly {
-		return
-	}
-	// Repalce by type
-	switch p.Type {
-	case StringParam:
-		t.replaceTextParam(n, p)
-	case ImageParam:
-		t.replaceImageParams(n, p)
-	}
 }
 
 func (t *Template) replaceAndRunTrigger(p *Param, n *xmlNode, triggerParamOnly bool) {
@@ -232,7 +191,7 @@ func (t *Template) enhanceMarkup(xnode *xmlNode) {
 			return
 		}
 		// n.XMLName.Local = "w-item"
-		n.Attrs = append(n.Attrs, &xml.Attr{
+		n.Attrs = append(n.Attrs, xml.Attr{
 			Name:  xml.Name{Local: "list-id"},
 			Value: listID,
 		})
