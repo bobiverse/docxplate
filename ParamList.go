@@ -232,6 +232,7 @@ func rowParams(row []byte) ParamList {
 		p.RowPlaceholder = string(match[0])
 		p.Separator = string(match[3])
 		p.Trigger = NewParamTrigger(match[4])
+		p.Formatter = NewFormatter(match[4])
 		list = append(list, p)
 	}
 	return list
