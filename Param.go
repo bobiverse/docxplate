@@ -100,28 +100,32 @@ func (p *Param) SetValue(val any) {
 
 // Placeholder .. {{Key}}
 func (p *Param) Placeholder() string {
-	var formatter string = ""
+	var formatter, trigger, params string
 	if p.Formatter != nil {
 		formatter = p.Formatter.String()
 	}
-	var trigger string = ""
 	if p.Trigger != nil {
 		trigger = p.Trigger.String()
 	}
-	return "{{" + p.AbsoluteKey + " " + formatter + trigger + "}}"
+	if p.Formatter != nil || p.Trigger != nil {
+		params = " " + formatter + trigger
+	}
+	return "{{" + p.AbsoluteKey + params + "}}"
 }
 
 // PlaceholderKey .. {{#Key}}
 func (p *Param) PlaceholderKey() string {
-	var formatter string = ""
+	var formatter, trigger, params string
 	if p.Formatter != nil {
 		formatter = p.Formatter.String()
 	}
-	var trigger string = ""
 	if p.Trigger != nil {
 		trigger = p.Trigger.String()
 	}
-	return "{{#" + p.AbsoluteKey + " " + formatter + trigger + "}}"
+	if p.Formatter != nil || p.Trigger != nil {
+		params = " " + formatter + trigger
+	}
+	return "{{#" + p.AbsoluteKey + params + "}}"
 }
 
 // PlaceholderInline .. {{Key ,}}

@@ -67,14 +67,15 @@ func (t *Template) expandPlaceholders(xnode *xmlNode) {
 				placeholderType = rowPlaceholder
 			}
 
-			var formatter string
+			var formatter, trigger, params string
 			if rowParam.Formatter != nil {
 				formatter = rowParam.Formatter.String()
 			}
-
-			var trigger string
 			if rowParam.Trigger != nil {
 				trigger = rowParam.Trigger.String()
+			}
+			if rowParam.Formatter != nil || rowParam.Trigger != nil {
+				params = " " + formatter + trigger
 			}
 
 			paramData := t.params.FindAllByKey(rowParam.AbsoluteKey)
@@ -84,7 +85,7 @@ func (t *Template) expandPlaceholders(xnode *xmlNode) {
 			placeholders := make([]string, paramData[len(paramData)-1].Index)
 
 			for _, param := range paramData {
-				placeholders[param.Index-1] = "{{" + param.AbsoluteKey + " " + formatter + trigger + "}}"
+				placeholders[param.Index-1] = "{{" + param.AbsoluteKey + params + "}}"
 			}
 			rowPlaceholders[rowParam.RowPlaceholder] = &placeholder{
 				Type:         placeholderType,
