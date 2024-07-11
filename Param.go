@@ -46,7 +46,8 @@ type Param struct {
 
 	Separator string // {{Usernames SEPERATOR}}
 
-	Trigger *ParamTrigger
+	Trigger   *ParamTrigger
+	Formatter *ParamFormatter
 
 	RowPlaceholder string
 	Index          int //slice data index,expandPlaceholders function needs
@@ -74,6 +75,8 @@ func NewParamFromRaw(raw []byte) *Param {
 	p := NewParam(string(matches[0][2]))
 	p.Separator = strings.TrimSpace(string(matches[0][3]))
 	p.Trigger = NewParamTrigger(matches[0][4])
+	p.Formatter = NewFormatter(matches[0][4])
+
 	return p
 }
 
@@ -97,20 +100,32 @@ func (p *Param) SetValue(val any) {
 
 // Placeholder .. {{Key}}
 func (p *Param) Placeholder() string {
-	var trigger string = ""
-	if p.Trigger != nil {
-		trigger = " " + p.Trigger.String()
+	var formatter, trigger, params string
+	if p.Formatter != nil {
+		formatter = p.Formatter.String()
 	}
-	return "{{" + p.AbsoluteKey + trigger + "}}"
+	if p.Trigger != nil {
+		trigger = p.Trigger.String()
+	}
+	if p.Formatter != nil || p.Trigger != nil {
+		params = " " + formatter + trigger
+	}
+	return "{{" + p.AbsoluteKey + params + "}}"
 }
 
 // PlaceholderKey .. {{#Key}}
 func (p *Param) PlaceholderKey() string {
-	var trigger string
-	if p.Trigger != nil {
-		trigger = " " + p.Trigger.String()
+	var formatter, trigger, params string
+	if p.Formatter != nil {
+		formatter = p.Formatter.String()
 	}
-	return "{{#" + p.AbsoluteKey + trigger + "}}"
+	if p.Trigger != nil {
+		trigger = p.Trigger.String()
+	}
+	if p.Formatter != nil || p.Trigger != nil {
+		params = " " + formatter + trigger
+	}
+	return "{{#" + p.AbsoluteKey + params + "}}"
 }
 
 // PlaceholderInline .. {{Key ,}}
@@ -213,6 +228,31 @@ func (p *Param) extractTriggerFrom(buf []byte) *ParamTrigger {
 	return nil
 }
 
+// Try to extract trigger from raw contents specific to this param
+func (p *Param) extractFormatter(buf []byte) *ParamFormatter {
+	prefixes := []string{
+		p.PlaceholderInline(),
+		p.PlaceholderKeyInline(),
+	}
+	for _, pref := range prefixes {
+		bpref := []byte(pref)
+		if !bytes.Contains(buf, bpref) {
+			continue
+		}
+
+		// Get part where trigger is (remove plaheolder prefix)
+		buf := bytes.SplitN(buf, bpref, 2)[1]
+
+		// Remove placeholder suffix and only raw trigger part left
+		buf = bytes.SplitN(buf, []byte("}}"), 2)[0]
+
+		p.Formatter = NewFormatter(buf)
+		return p.Formatter
+	}
+
+	return nil
+}
+
 // RunTrigger - execute trigger
 func (p *Param) RunTrigger(xnode *xmlNode) {
 	if p == nil || p.Trigger == nil {
@@ -240,7 +280,6 @@ func (p *Param) RunTrigger(xnode *xmlNode) {
 
 	n := xnode.closestUp(ntypes)
 	if n == nil {
-		// aurora.Red("EMPTY parent of %v", xnode.Tag())
 		return
 	}
 
@@ -254,7 +293,6 @@ func (p *Param) RunTrigger(xnode *xmlNode) {
 		n.parent.childFirst.iterate(func(wpNode *xmlNode) bool {
 			isitem, listid := wpNode.IsListItem()
 			if !isitem || listid != listID {
-				// aurora.Red("--- %s [%s]", wpNode, wpNode.AllContents())
 				return false
 			}
 			if p.Trigger.Command == TriggerCommandRemove {
@@ -267,7 +305,6 @@ func (p *Param) RunTrigger(xnode *xmlNode) {
 
 	// Simple cases
 	if p.Trigger.Command == TriggerCommandRemove {
-		// fmt.Printf("Trigger: [%s] [%s]\t Command=[%s]\n", aurora.Blue(p.AbsoluteKey), aurora.Magenta(p.Trigger.String()), aurora.BgMagenta(p.Trigger.Command))
 		n.delete()
 		return
 	}
@@ -279,13 +316,13 @@ func (p *Param) RunTrigger(xnode *xmlNode) {
 		})
 		return
 	}
-
 }
 
 // String - compact debug information as string
 func (p *Param) String() string {
 	s := fmt.Sprintf("%34s=%-20s", p.AbsoluteKey, p.Value)
 	s += fmt.Sprintf("\tSeparator[%s]", p.Separator)
+	s += fmt.Sprintf("\tFormatter[%s]", p.Formatter)
 	s += fmt.Sprintf("\tTrigger[%s]", p.Trigger)
 	return s
 }

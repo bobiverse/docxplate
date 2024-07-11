@@ -41,8 +41,7 @@ type ParamTrigger struct {
 	Scope   string
 }
 
-// NewParamTrigger - take raw ":empty:remove:list" and make
-// trigger and it's fields from it
+// NewParamTrigger - take raw ":empty:remove:list" and make trigger and its fields from it
 func NewParamTrigger(raw []byte) *ParamTrigger {
 	raw = bytes.TrimSpace(raw)
 	raw = bytes.ToLower(raw)
@@ -59,28 +58,34 @@ func NewParamTrigger(raw []byte) *ParamTrigger {
 	if !strings.HasPrefix(tr.raw, ":") {
 		return nil
 	}
-	// remove first ":" so split parts counting is more readable
-	tr.raw = strings.TrimPrefix(tr.raw, ":")
 
-	// Must be at least set two parts ":empty:remove"
-	if strings.Count(tr.raw, ":") < 2 {
-		return nil
+	// Remove the first ":" so split parts counting is more readable
+	// Split into parts
+	parts := strings.Split(tr.raw[1:], ":")
+
+	var countCommandParts = 0
+	for _, part := range parts {
+		switch part {
+		case "unknown", "empty", "=":
+			countCommandParts++
+			tr.On = ":" + part
+		case "remove", "clear":
+			countCommandParts++
+			tr.Command = ":" + part
+		case "placeholder", "cell", "row", "list", "table", "section":
+			countCommandParts++
+			tr.Scope = ":" + part
+		}
 	}
-	// Extract fields
-	arr := strings.SplitN(tr.raw, ":", 3)
-	tr.On = ":" + arr[0]
-	tr.Command = ":" + arr[1]
 
-	// Scope: set default if not found
-	if len(arr) >= 3 {
-		tr.Scope = ":" + arr[2]
+	if countCommandParts != 3 {
+		return nil
 	}
 
 	if !tr.isValid() {
 		return nil
 	}
 
-	// fmt.Printf("TRIGGER: %+v", tr)
 	return tr
 }
 
@@ -89,6 +94,7 @@ func (tr *ParamTrigger) isValid() bool {
 
 	// On
 	if !inSlice(tr.On, []string{
+		TriggerOnUnknown,
 		TriggerOnEmpty,
 		TriggerOnValue,
 	}) {

@@ -21,7 +21,6 @@ func (t *Template) triggerMissingParams(xnode *xmlNode) {
 		if !n.isRowElement() || !n.HaveParams() {
 			return
 		}
-
 		p := NewParamFromRaw(n.AllContents())
 		if p != nil && p.Trigger != nil {
 			triggerParams = append(triggerParams, p)
@@ -68,9 +67,15 @@ func (t *Template) expandPlaceholders(xnode *xmlNode) {
 				placeholderType = rowPlaceholder
 			}
 
-			var trigger string
+			var formatter, trigger, params string
+			if rowParam.Formatter != nil {
+				formatter = rowParam.Formatter.String()
+			}
 			if rowParam.Trigger != nil {
-				trigger = " " + rowParam.Trigger.String()
+				trigger = rowParam.Trigger.String()
+			}
+			if rowParam.Formatter != nil || rowParam.Trigger != nil {
+				params = " " + formatter + trigger
 			}
 
 			paramData := t.params.FindAllByKey(rowParam.AbsoluteKey)
@@ -80,7 +85,7 @@ func (t *Template) expandPlaceholders(xnode *xmlNode) {
 			placeholders := make([]string, paramData[len(paramData)-1].Index)
 
 			for _, param := range paramData {
-				placeholders[param.Index-1] = "{{" + param.AbsoluteKey + trigger + "}}"
+				placeholders[param.Index-1] = "{{" + param.AbsoluteKey + params + "}}"
 			}
 			rowPlaceholders[rowParam.RowPlaceholder] = &placeholder{
 				Type:         placeholderType,
@@ -109,16 +114,17 @@ func (t *Template) expandPlaceholders(xnode *xmlNode) {
 					if nnews[i] == nil {
 						nnews[i] = nrow.cloneAndAppend()
 					}
+
 					nnews[i].Walk(func(n *xmlNode) {
 						if !inSlice(n.XMLName.Local, []string{"w-t"}) || len(n.Content) == 0 {
 							return
 						}
+
 						replaceData := oldPlaceholder
 						if i < len(newPlaceholder.Placeholders) && newPlaceholder.Placeholders[i] != "" {
 							replaceData = newPlaceholder.Placeholders[i]
 						}
 						n.Content = bytes.ReplaceAll(n.Content, []byte(oldPlaceholder), []byte(replaceData))
-
 					})
 				}
 			}
@@ -169,6 +175,10 @@ func (t *Template) replaceAndRunTrigger(p *Param, n *xmlNode, triggerParamOnly b
 	// Repalce by type
 	switch p.Type {
 	case StringParam:
+		if p.Formatter = p.extractFormatter(n.Content); p.Formatter != nil {
+			result := p.Formatter.ApplyFormat(p.Formatter.Format, []byte(p.Value))
+			p.Value = string(result)
+		}
 		t.replaceTextParam(n, p)
 	case ImageParam:
 		t.replaceImageParams(n, p)
