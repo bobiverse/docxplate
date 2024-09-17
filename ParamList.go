@@ -12,8 +12,8 @@ import (
 type ParamList []*Param
 
 // Get method returns the value associated with the given name
-func (plist ParamList) Get(key string) any {
-	for _, p := range plist {
+func (params ParamList) Get(key string) any {
+	for _, p := range params {
 		if p.Key == key {
 			return p.Value
 		}
@@ -22,8 +22,8 @@ func (plist ParamList) Get(key string) any {
 }
 
 // Len ..
-func (p ParamList) Len() int {
-	return len(p)
+func (params ParamList) Len() int {
+	return len(params)
 }
 
 // AnyToParams - load params from given any struct
@@ -234,16 +234,16 @@ func rowParams(row []byte) ParamList {
 		return nil
 	}
 
-	var list []*Param
+	var params ParamList
 	for _, match := range matches {
 		p := NewParam(string(match[2]))
 		p.RowPlaceholder = string(match[0])
 		p.Separator = string(match[3])
 		p.Trigger = NewParamTrigger(match[4])
 		p.Formatter = NewFormatter(match[4])
-		list = append(list, p)
+		params = append(params, p)
 	}
-	return list
+	return params
 }
 
 // Walk through params
@@ -255,6 +255,7 @@ func (params ParamList) Walk(fn func(*Param)) {
 	}
 }
 
+// WalkWithEnd - recursively apply fn to each Param in the list
 func (params ParamList) WalkWithEnd(fn func(*Param) bool) {
 	for _, p := range params {
 		if fn(p) {
@@ -264,53 +265,62 @@ func (params ParamList) WalkWithEnd(fn func(*Param) bool) {
 	}
 }
 
-func (p ParamList) FindAllByKey(key string) []*Param {
+// FindAllByKey - returns all Params matching the given key
+func (params ParamList) FindAllByKey(key string) ParamList {
 	keySlice := strings.Split(key, ".")
-	var ret []*Param
-	p.findAllByKey(nil, nil, 0, 1, keySlice, &ret)
+	var ret ParamList
+	params.findAllByKey(nil, nil, 0, 1, keySlice, &ret)
 	return ret
 }
 
-func (p ParamList) findAllByKey(privParamList, paramList []int, offset, depth int, key []string, params *[]*Param) ([]int, int) {
+func (params ParamList) findAllByKey(privParamList, paramList []int, offset, depth int, key []string, paramsIn *ParamList) ([]int, int) {
 	if depth > len(key) {
 		return nil, 0
 	}
 	currLev := strings.Join(key[:depth], ".")
-	for i, param := range p {
+	for i, param := range params {
 		curr := make([]int, len(paramList))
 		copy(curr, paramList)
+
 		if param.parent != nil && param.parent.Type == SliceParam {
 			curr = append(curr, i+1)
 		}
+
 		if param.Type == StructParam {
-			privParamList, offset = param.Params.findAllByKey(privParamList, curr, offset, depth+1, key, params)
-		} else {
-			if param.CompactKey == currLev || param.AbsoluteKey == currLev {
-				if param.Type == SliceParam {
-					privParamList, offset = param.Params.findAllByKey(privParamList, curr, offset, depth, key, params)
-					continue
-				}
-				if depth == len(key) {
-					index := 1
-					if len(curr) > 0 {
-						index = curr[len(curr)-1]
-						if len(curr) == len(privParamList) {
-							for i := range curr[:len(curr)-1] {
-								if privParamList[i] != curr[i] {
-									offset += privParamList[len(privParamList)-1]
-									break
-								}
+			privParamList, offset = param.Params.findAllByKey(privParamList, curr, offset, depth+1, key, paramsIn)
+			continue
+		}
+
+		if param.CompactKey == currLev || param.AbsoluteKey == currLev {
+
+			if param.Type == SliceParam {
+				privParamList, offset = param.Params.findAllByKey(privParamList, curr, offset, depth, key, paramsIn)
+				continue
+			}
+
+			if depth == len(key) {
+				index := 1
+				if len(curr) > 0 {
+					index = curr[len(curr)-1]
+					if len(curr) == len(privParamList) {
+						for i := range curr[:len(curr)-1] {
+							if privParamList[i] != curr[i] {
+								offset += privParamList[len(privParamList)-1]
+								break
 							}
 						}
 					}
-					param.Index = index + offset
-					privParamList = curr
-					*params = append(*params, param)
-				} else {
-					privParamList, offset = param.Params.findAllByKey(privParamList, curr, offset, depth+1, key, params)
 				}
+				param.Index = index + offset
+				privParamList = curr
+				*paramsIn = append(*paramsIn, param)
+				continue
 			}
+
+			privParamList, offset = param.Params.findAllByKey(privParamList, curr, offset, depth+1, key, paramsIn)
+
 		}
+
 	}
 	return privParamList, offset
 }

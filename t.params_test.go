@@ -18,7 +18,7 @@ func TestAnyToParamsMapStringString(t *testing.T) {
 	}
 
 	// check if all params exists
-	for k, _ := range inParams {
+	for k := range inParams {
 		if p := outParams.Get(k); p == nil {
 			t.Fatalf("param  `%s` not found", k)
 		}

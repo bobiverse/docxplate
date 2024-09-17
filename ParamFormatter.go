@@ -16,9 +16,9 @@ const (
 	FormatCapitalize = ":capitalize"
 )
 
+// ParamFormatter ..
 type ParamFormatter struct {
-	raw string
-
+	raw    string
 	Format string
 }
 
@@ -51,7 +51,7 @@ func NewFormatter(raw []byte) *ParamFormatter {
 	return f
 }
 
-// applyFormat - apply formatting to the given content based on the formatter
+// ApplyFormat - apply formatting to the given content based on the formatter
 func (p *ParamFormatter) ApplyFormat(format string, content []byte) []byte {
 	switch format {
 	case FormatLower:

@@ -50,7 +50,7 @@ type Param struct {
 	Formatter *ParamFormatter
 
 	RowPlaceholder string
-	Index          int //slice data index,expandPlaceholders function needs
+	Index          int // slice data index,expandPlaceholders function needs
 }
 
 // NewParam ..

@@ -7,8 +7,6 @@ import (
 	"regexp"
 	"slices"
 	"strings"
-
-	"github.com/logrusorgru/aurora/v4"
 )
 
 // NodeSingleTypes - NB! sequence is important
@@ -144,7 +142,9 @@ func (xnode *xmlNode) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error
 // MarshalXML ..
 func (xnode *xmlNode) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
 	// n.Attrs = start.Attr
-	defer e.Close()
+	defer func() {
+		_ = e.Close()
+	}()
 	return xnode.XMLEncode(e)
 
 }
@@ -346,7 +346,7 @@ func (xnode *xmlNode) cloneAndAppend() *xmlNode {
 		return xnode
 	}
 	// new copy node
-	nnew := xnode.clone(xnode.parent) //set parent
+	nnew := xnode.clone(xnode.parent) // set parent
 	nnew.isNew = true
 
 	tmp := xnode.next
@@ -473,65 +473,67 @@ func (xnode *xmlNode) String() string {
 	return s
 }
 
-// Print tree of node and down
-func (xnode *xmlNode) printTree(label string) {
-	fmt.Printf("[ %s ]", label)
-	fmt.Println("|" + strings.Repeat("-", 80))
+// UNUSED - but kept for debugging
+// // Print tree of node and down
+// func (xnode *xmlNode) printTree(label string) {
+// 	fmt.Printf("[ %s ]", label)
+// 	fmt.Println("|" + strings.Repeat("-", 80))
 
-	if xnode == nil {
-		aurora.Red("Empty node.")
-		return
-	}
-	fmt.Printf("|%s |%p| %s\n", xnode.XMLName.Local, xnode, xnode.Content)
+// 	if xnode == nil {
+// 		aurora.Red("Empty node.")
+// 		return
+// 	}
+// 	fmt.Printf("|%s |%p| %s\n", xnode.XMLName.Local, xnode, xnode.Content)
 
-	xnode.WalkTree(0, func(depth int, n *xmlNode) {
-		s := "|"
-		s += strings.Repeat(" ", depth*4)
+// 	xnode.WalkTree(0, func(depth int, n *xmlNode) {
+// 		s := "|"
+// 		s += strings.Repeat(" ", depth*4)
 
-		// tag
-		s += fmt.Sprintf("%-10s", n.XMLName.Local)
-		if xnode.isNew {
-			s = aurora.Cyan(s).String()
-		}
+// 		// tag
+// 		s += fmt.Sprintf("%-10s", n.XMLName.Local)
+// 		if xnode.isNew {
+// 			s = aurora.Cyan(s).String()
+// 		}
 
-		// pointers
-		s += fmt.Sprintf("|%p|", n)
-		sptr := fmt.Sprintf("|%p| ", n.parent)
-		if n.parent == nil {
-			sptr = aurora.Red(sptr).String()
-		}
-		s += sptr
+// 		// pointers
+// 		s += fmt.Sprintf("|%p|", n)
+// 		sptr := fmt.Sprintf("|%p| ", n.parent)
+// 		if n.parent == nil {
+// 			sptr = aurora.Red(sptr).String()
+// 		}
+// 		s += sptr
 
-		if isListItem, listID := n.IsListItem(); isListItem {
-			s += fmt.Sprintf(" (List:%s) ", aurora.Blue(listID))
-		}
+// 		if isListItem, listID := n.IsListItem(); isListItem {
+// 			s += fmt.Sprintf(" (List:%s) ", aurora.Blue(listID))
+// 		}
 
-		if bytes.TrimSpace(n.Content) != nil {
-			s += fmt.Sprintf("[%s]", aurora.Yellow(n.Content))
-		} else if n.HaveParams() {
-			s += aurora.Magenta("<< empty param value >>").String()
-		}
+// 		if bytes.TrimSpace(n.Content) != nil {
+// 			s += fmt.Sprintf("[%s]", aurora.Yellow(n.Content))
+// 		} else if n.HaveParams() {
+// 			s += aurora.Magenta("<< empty param value >>").String()
+// 		}
 
-		// s += aurora.Cyan(" -- %s", n.StylesString())
+// 		// s += aurora.Cyan(" -- %s", n.StylesString())
 
-		fmt.Println(s)
-	})
+// 		fmt.Println(s)
+// 	})
 
-	fmt.Println("|" + strings.Repeat("-", 80))
-}
+// 	fmt.Println("|" + strings.Repeat("-", 80))
+// }
 
-func (xnode *xmlNode) attrID() string {
-	if xnode == nil {
-		return ""
-	}
+// UNUSED
+// func (xnode *xmlNode) attrID() string {
+// 	if xnode == nil {
+// 		return ""
+// 	}
 
-	for _, attr := range xnode.Attrs {
-		if attr.Name.Local == "id" {
-			return attr.Value
-		}
-	}
-	return ""
-}
+// 	for _, attr := range xnode.Attrs {
+// 		if attr.Name.Local == "id" {
+// 			return attr.Value
+// 		}
+// 	}
+// 	return ""
+// }
 
 // ^ > w-p > w-pPr > w-numPr > w-numId
 func (xnode *xmlNode) nodeBySelector(selector string) *xmlNode {
