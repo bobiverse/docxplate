@@ -119,29 +119,35 @@ func (t *Template) matchBrokenLeftPlaceholder(content string) bool {
 	return t.matchBrokenPlaceholder(content, true)
 }
 
-// Match right placeholder part `}}`
-func (t *Template) matchBrokenRightPlaceholder(content string) bool {
-	return t.matchBrokenPlaceholder(content, false)
-}
+// UNUSED
+// // Match right placeholder part `}}`
+// func (t *Template) matchBrokenRightPlaceholder(content string) bool {
+// 	return t.matchBrokenPlaceholder(content, false)
+// }
 
+// GetAttrParam - extracts and returns substrings enclosed in double curly braces "{{...}}" from the given string
 func (t Template) GetAttrParam(attr string) []string {
 	var ret []string
 	var record strings.Builder
 	start := false
 	length := len(attr)
 	for i := 1; i < length-1; i++ {
+
 		if attr[i] == '{' && attr[i-1] == '{' {
 			start = true
 			continue
 		}
+
 		if start && (attr[i] == ' ' || (attr[i] == '}' && length-1 > i && attr[i+1] == '}')) {
 			ret = append(ret, record.String())
 			record.Reset()
 			start = false
 		}
+
 		if start {
 			record.WriteByte(attr[i])
 		}
 	}
+
 	return ret
 }
