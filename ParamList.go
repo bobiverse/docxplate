@@ -66,6 +66,14 @@ func mapToParams(m map[string]any) ParamList {
 		case []any:
 			p.Type = SliceParam
 			p.Params = sliceToParams(v)
+		case *Image:
+			imgVal, err := processImage(v)
+			if err != nil {
+				log.Printf("ProcessImage: %s", err)
+				p = nil
+			}
+			p.Type = ImageParam
+			p.SetValue(imgVal)
 		default:
 			p.Type = StringParam
 			p.SetValue(mVal)
