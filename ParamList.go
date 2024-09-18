@@ -71,9 +71,10 @@ func mapToParams(m map[string]any) ParamList {
 			if err != nil {
 				log.Printf("ProcessImage: %s", err)
 				p = nil
+			} else {
+				p.Type = ImageParam
+				p.SetValue(imgVal)
 			}
-			p.Type = ImageParam
-			p.SetValue(imgVal)
 		default:
 			p.Type = StringParam
 			p.SetValue(mVal)
