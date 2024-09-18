@@ -1,6 +1,7 @@
 package docxplate
 
 import (
+	"context"
 	"encoding/xml"
 	"fmt"
 	"log"
@@ -17,7 +18,7 @@ func processImage(img *Image) (imgXMLStr string, err error) {
 
 	imgPath = img.Path // default
 	if img.Path == "" {
-		imgPath, err = DefaultDownloader.DownloadFile(img.URL)
+		imgPath, err = DefaultDownloader.DownloadFile(context.Background(), img.URL)
 		if err != nil {
 			return
 		}

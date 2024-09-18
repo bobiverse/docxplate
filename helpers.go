@@ -2,6 +2,7 @@ package docxplate
 
 import (
 	"bytes"
+	"context"
 	"crypto/md5" // #nosec  G501 - allowed weak hash
 	"encoding/xml"
 	"fmt"
@@ -77,7 +78,7 @@ type defDownloader struct {
 }
 
 // DownloadFile Download url file
-func (defDownloader) DownloadFile(urlStr string) (tmpFile string, err error) {
+func (defDownloader) DownloadFile(_ context.Context, urlStr string) (tmpFile string, err error) {
 	// Get file
 	resp, err := http.Get(urlStr) // #nosec  G107 - allowed url variable here
 	if err != nil {

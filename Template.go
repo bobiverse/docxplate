@@ -3,6 +3,7 @@ package docxplate
 import (
 	"archive/zip"
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"log"
@@ -25,7 +26,7 @@ var modFileNamesLike = []string{
 var t *Template
 
 type Downloader interface {
-	DownloadFile(urlStr string) (tmpFile string, err error)
+	DownloadFile(ctx context.Context, urlStr string) (tmpFile string, err error)
 }
 
 // Template ..
@@ -111,7 +112,7 @@ func OpenTemplateWithBytes(docBytes []byte) (*Template, error) {
 
 // OpenTemplateWithURL .. docpath is remote url
 func OpenTemplateWithURL(docurl string) (tpl *Template, err error) {
-	docpath, err := DefaultDownloader.DownloadFile(docurl)
+	docpath, err := DefaultDownloader.DownloadFile(context.Background(), docurl)
 	if err != nil {
 		return nil, err
 	}
