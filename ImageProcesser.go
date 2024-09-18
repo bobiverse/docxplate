@@ -17,7 +17,7 @@ func processImage(img *Image) (imgXMLStr string, err error) {
 
 	imgPath = img.Path // default
 	if img.Path == "" {
-		imgPath, err = downloadFile(img.URL)
+		imgPath, err = DefaultDownloader.DownloadFile(img.URL)
 		if err != nil {
 			return
 		}

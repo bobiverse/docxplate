@@ -12,6 +12,8 @@ import (
 	"path"
 )
 
+var DefaultDownloader Downloader = &defDownloader{}
+
 func readerBytes(rdr io.ReadCloser) []byte {
 	buf := new(bytes.Buffer)
 
@@ -63,16 +65,19 @@ func structToXMLBytes(v any) []byte {
 
 // Is slice contains item
 func inSlice(a string, slice []string) bool {
-	for _, b := range slice {
-		if a == b {
+	for index := range slice {
+		if a == slice[index] {
 			return true
 		}
 	}
 	return false
 }
 
-// Download url file
-func downloadFile(urlStr string) (tmpFile string, err error) {
+type defDownloader struct {
+}
+
+// DownloadFile Download url file
+func (defDownloader) DownloadFile(urlStr string) (tmpFile string, err error) {
 	// Get file
 	resp, err := http.Get(urlStr) // #nosec  G107 - allowed url variable here
 	if err != nil {
