@@ -1,6 +1,7 @@
 package docxplate
 
 import (
+	"context"
 	"errors"
 	"io"
 	"net/http"
@@ -17,7 +18,7 @@ func (et *errorTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 
 func TestDownloadFileInvalidCases(t *testing.T) {
 	t.Run("invalid URL", func(t *testing.T) {
-		tmpFpath, err := downloadFile("::invalid-url")
+		tmpFpath, err := DefaultDownloader.DownloadFile(context.Background(), "::invalid-url")
 		if err == nil {
 			t.Fatalf("Expected an error, but got nil")
 		}
@@ -39,7 +40,7 @@ func TestDownloadFileInvalidCases(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 		defer server.Close()
 
-		tmpFpath, err := downloadFile(server.URL)
+		tmpFpath, err := DefaultDownloader.DownloadFile(context.Background(), server.URL)
 		// fmt.Println("remove tmp file", tmpFpath, server.URL)
 		if err == nil {
 			t.Fatalf("Expected an error, but got nil")
@@ -53,7 +54,7 @@ func TestDownloadFileInvalidCases(t *testing.T) {
 		}))
 		defer server.Close()
 
-		tmpFpath, err := downloadFile(server.URL)
+		tmpFpath, err := DefaultDownloader.DownloadFile(context.Background(), server.URL)
 		if !errors.Is(err, http.ErrMissingFile) {
 			t.Fatalf("Expected http.ErrMissingFile, but got: %v", err)
 		}
@@ -67,7 +68,7 @@ func TestDownloadFileInvalidCases(t *testing.T) {
 		}))
 		defer server.Close()
 
-		tmpFpath, err := downloadFile(server.URL)
+		tmpFpath, err := DefaultDownloader.DownloadFile(context.Background(), server.URL)
 		if err == nil {
 			t.Fatalf("Expected an error, but got nil")
 		}

@@ -280,7 +280,7 @@ func (xnode *xmlNode) isRowElement() bool {
 // Single type
 // w-t, w-r
 func (xnode *xmlNode) isSingle() bool {
-	return slices.Contains[[]string](NodeSingleTypes, xnode.XMLName.Local)
+	return slices.Contains(NodeSingleTypes, xnode.XMLName.Local)
 }
 
 // HaveParams - does node contents contains any param
