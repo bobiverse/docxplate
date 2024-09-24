@@ -25,10 +25,6 @@ var modFileNamesLike = []string{
 }
 var t *Template
 
-type Downloader interface {
-	DownloadFile(ctx context.Context, urlStr string) (tmpFile string, err error)
-}
-
 // Template ..
 type Template struct {
 	path string

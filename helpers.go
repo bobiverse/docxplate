@@ -1,19 +1,11 @@
 package docxplate
 
 import (
-	"bytes"
-	"context"
-	"crypto/md5" // #nosec  G501 - allowed weak hash
+	"bytes" // #nosec  G501 - allowed weak hash
 	"encoding/xml"
-	"fmt"
 	"io"
 	"log"
-	"net/http"
-	"os"
-	"path"
 )
-
-var DefaultDownloader Downloader = &defDownloader{}
 
 func readerBytes(rdr io.ReadCloser) []byte {
 	buf := new(bytes.Buffer)
@@ -72,44 +64,4 @@ func inSlice(a string, slice []string) bool {
 		}
 	}
 	return false
-}
-
-type defDownloader struct {
-}
-
-// DownloadFile Download url file
-func (defDownloader) DownloadFile(_ context.Context, urlStr string) (tmpFile string, err error) {
-	// Get file
-	resp, err := http.Get(urlStr) // #nosec  G107 - allowed url variable here
-	if err != nil {
-		return "", err
-	}
-
-	defer func() {
-		if err := resp.Body.Close(); err != nil {
-			log.Printf("download: remove: %s", err)
-		}
-	}()
-
-	if resp.StatusCode != 200 {
-		return "", http.ErrMissingFile
-	}
-	// Create file
-	tmpFile = fmt.Sprintf("%x%s", md5.Sum([]byte(urlStr)), path.Ext(urlStr)) // #nosec  G401 - allowed weak hash here
-	out, err := os.Create(tmpFile)                                           // #nosec  G304 - allowed filename variable here
-	if err != nil {
-		return
-	}
-	defer func() {
-		if err := out.Close(); err != nil {
-			log.Printf("download: close: %s", err)
-		}
-	}()
-
-	// Write body to file
-	_, err = io.Copy(out, resp.Body)
-	if err != nil {
-		return
-	}
-	return tmpFile, nil
 }
