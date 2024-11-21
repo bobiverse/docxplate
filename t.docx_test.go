@@ -177,6 +177,12 @@ func TestPlaceholders(t *testing.T) {
 				t.Fatalf("[%s] ExportDocx: %s", inType, err)
 			}
 
+			lines := strings.Split(plaintext, "\n")
+			if len(lines) > 900 { // some loops have limit at 1000k iterations, so here is simple check
+				t.Fatalf("Plaintext too long: \n%s", tdoc.Plaintext())
+
+			}
+
 			// Check for "must remove" text
 			removedTexts := []string{
 				":empty",
@@ -243,13 +249,13 @@ func TestDepthStructToParams(t *testing.T) {
 		Friends: []*User{
 			{Name: "Bob", Age: 28, Motto: "Be\nbrave,\nbe\nbold.", Friends: []*User{
 				{Name: "Cecilia", Age: 29, Motto: "Chase\nyour\ndreams."},
-				{Name: "Sun", Age: 999, Motto: ""},
-				{Name: "Tony", Age: 999, Motto: ""},
+				{Name: "Sun (empty motto)", Age: 999, Motto: ""},
+				{Name: "Tony (empty motto)", Age: 999, Motto: ""},
 			}},
 			{Name: "Den", Age: 30, Motto: "Don't give up.", Friends: []*User{
 				{Name: "Ben", Age: 999, Motto: "Be brave, be bold as twice as Bob."},
 				{Name: "Edgar", Age: 31, Motto: "Embrace the moment."},
-				{Name: "Jouny", Age: 999, Motto: ""},
+				{Name: "Jouny (empty motto)", Age: 999, Motto: ""},
 				{Name: "Carrzy", Age: 999, Motto: "Chase your dreamzzz"},
 			}},
 		},

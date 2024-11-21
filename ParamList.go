@@ -38,12 +38,14 @@ func AnyToParams(v any) ParamList {
 
 // JSONToParams - load params from JSON
 func JSONToParams(buf []byte) ParamList {
+
 	// to map
 	m := map[string]any{}
 	if err := json.Unmarshal(buf, &m); err != nil {
 		log.Printf("JSONToParams: %s", err)
 		return nil
 	}
+
 	// to filtered/clean map
 	params := mapToParams(m)
 	params.Walk(func(p *Param) {
@@ -57,15 +59,18 @@ func JSONToParams(buf []byte) ParamList {
 func mapToParams(m map[string]any) ParamList {
 	var params ParamList
 	for mKey, mVal := range m {
+
 		p := NewParam(mKey)
 
 		switch v := mVal.(type) {
 		case map[string]any:
 			p.Type = StructParam
 			p.Params = mapToParams(v)
+			p.SetValue(v)
 		case []any:
 			p.Type = SliceParam
 			p.Params = sliceToParams(v)
+			p.SetValue(v)
 		case *Image:
 			imgVal, err := processImage(v)
 			if err != nil {

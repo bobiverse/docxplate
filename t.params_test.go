@@ -35,6 +35,7 @@ func TestAnyToParamsMapStringAny(t *testing.T) {
 		"Name":     "Bob",
 		"Age":      uint(28),
 		"FavColor": dummyTestType(0xF00),
+		"Numbers":  []int{1, 2, 3, 4, 5},
 	}
 
 	outParams := AnyToParams(inParams)
@@ -44,6 +45,7 @@ func TestAnyToParamsMapStringAny(t *testing.T) {
 
 	// check if all params exists
 	for k, v := range inParams {
+		// log.Printf("[%s] ==> [%v]", k, v)
 		val := outParams.Get(k)
 		if val == nil {
 			t.Fatalf("param  `%s` not found", k)
