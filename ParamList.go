@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"log"
 	"reflect"
-	"regexp"
 	"strings"
 )
 
@@ -232,8 +231,7 @@ func reflectSliceToParams(p *Param, val reflect.Value) {
 // Parse row content to param list
 func rowParams(row []byte) ParamList {
 	// extract from raw contents
-	re := regexp.MustCompile(ParamPattern)
-	matches := re.FindAllSubmatch(row, -1)
+	matches := reParamExtract.FindAllSubmatch(row, -1)
 
 	if matches == nil || matches[0] == nil {
 		return nil

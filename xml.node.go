@@ -76,28 +76,20 @@ func (xnode *xmlNode) iterate(fn func(node *xmlNode) bool) {
 	}
 }
 
+// GetContentPrefixList ..
 func (xnode xmlNode) GetContentPrefixList() (ret []string) {
-	var record strings.Builder
-	start := false
-	length := len(xnode.Content)
-	for i, v := range xnode.Content {
-		if i == 0 {
-			continue
-		}
+	// log.Printf("[%s]", aurora.Yellow(xnode.Content))
 
-		if v == '{' && xnode.Content[i-1] == '{' {
-			start = true
-			continue
-		}
-		if start && (v == ' ' || (v == '}' && length-1 > i && xnode.Content[i+1] == '}')) {
-			ret = append(ret, record.String())
-			record.Reset()
-			start = false
-		}
-		if start {
-			record.WriteByte(v)
-		}
+	matches := reParamExtract.FindAllSubmatch(xnode.Content, -1)
+	if matches == nil || matches[0] == nil || len(matches[0]) < 3 {
+		return nil
 	}
+
+	for _, submatches := range matches {
+		// log.Printf("--%s--", string(submatches[2]))
+		ret = append(ret, strings.TrimSpace(string(submatches[2])))
+	}
+
 	return
 }
 

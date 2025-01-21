@@ -10,7 +10,6 @@ import (
 	"os"
 	"path"
 	"reflect"
-	"regexp"
 	"strings"
 )
 
@@ -271,8 +270,7 @@ func (t *Template) Placeholders() []string {
 
 	plaintext := t.Plaintext()
 
-	re := regexp.MustCompile(ParamPattern)
-	arr = re.FindAllString(plaintext, -1)
+	arr = reParamExtract.FindAllString(plaintext, -1)
 
 	return arr
 }

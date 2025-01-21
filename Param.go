@@ -8,7 +8,8 @@ import (
 )
 
 // ParamPattern - regex pattern to identify params
-const ParamPattern = `{{(#|)([\w\.]+?)(| .*?)(| [:a-z]+?)}}`
+// const ParamPattern = `{{(#|)([\w\.]+?)(| .*?)(| [:a-z]+?)}}`
+var reParamExtract = regexp.MustCompile(`{{(#|)([\w\.\ \-]+?)(| [^\w]+?)(|(:[\w]+){1,3}?)}}`)
 
 // ParamType ..
 type ParamType int8
@@ -58,6 +59,7 @@ func NewParam(key any) *Param {
 	p := &Param{
 		Key: fmt.Sprintf("%v", key),
 	}
+	p.Key = strings.TrimSuffix(p.Key, " ")
 	p.AbsoluteKey = p.Key
 	p.CompactKey = p.Key
 	return p
@@ -66,22 +68,34 @@ func NewParam(key any) *Param {
 // NewParamFromRaw ..
 func NewParamFromRaw(raw []byte) *Param {
 	// extract from raw contents
-	re := regexp.MustCompile(ParamPattern)
-	matches := re.FindAllSubmatch(raw, -1)
+	matches := reParamExtract.FindAllSubmatch(raw, -1)
 	if matches == nil || matches[0] == nil {
 		return nil
 	}
+
+	if len(matches[0]) < 3 {
+		return nil
+	}
+
+	// // fmt.Println(aurora.Yellow(string(raw)))
+	// for i, submatches := range matches {
+	// 	for j, s := range submatches {
+	// 		fmt.Printf("[%d:%d] [%s]\n", i, j, aurora.Magenta(s))
+	// 	}
+	// }
 
 	p := NewParam(string(matches[0][2]))
 	p.Separator = strings.TrimSpace(string(matches[0][3]))
 	p.Trigger = NewParamTrigger(matches[0][4])
 	p.Formatter = NewFormatter(matches[0][4])
 
+	// fmt.Printf("[%s]\n", p.String())
 	return p
 }
 
 // string placeholder replace
 func (p *Param) replaceIn(buf []byte) []byte {
+	// log.Printf("REPALCEEEEE: [%v][%s]", p.Placeholder(), p.Value)
 	buf = bytes.ReplaceAll(buf, []byte(p.Placeholder()), []byte(p.Value))
 	buf = bytes.ReplaceAll(buf, []byte(p.PlaceholderKey()), []byte(p.Key))
 	return buf
