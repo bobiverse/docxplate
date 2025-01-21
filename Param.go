@@ -168,16 +168,15 @@ func (p *Param) Walk(fn func(*Param), level int) {
 
 		// Absolute key with slice indexes
 		p2.AbsoluteKey = p.AbsoluteKey + "." + p2.Key
-		if p.AbsoluteKey == "" {
+		if p.AbsoluteKey == "" || p.AbsoluteKey == "." {
 			p2.AbsoluteKey = p.Key + "." + p2.Key
 
 		}
 
 		// Complex key with no slice indexes
+		p2.CompactKey = p.CompactKey + "." + p2.Key
 		if p2.parent.Type == SliceParam {
 			p2.CompactKey = p.CompactKey
-		} else {
-			p2.CompactKey = p.CompactKey + "." + p2.Key
 		}
 
 		fn(p2)

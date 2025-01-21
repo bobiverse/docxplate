@@ -60,11 +60,9 @@ func (t *Template) expandPlaceholders(xnode *xmlNode) {
 		rowParams := rowParams(contents)
 		rowPlaceholders := make(map[string]*placeholder)
 		for _, rowParam := range rowParams {
-			var placeholderType placeholderType
+			placeholderType := rowPlaceholder
 			if len(rowParam.Separator) > 0 {
 				placeholderType = inlinePlaceholder
-			} else {
-				placeholderType = rowPlaceholder
 			}
 
 			var formatter, trigger, params string
