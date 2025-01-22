@@ -9,7 +9,8 @@ import (
 
 // ParamPattern - regex pattern to identify params
 // const ParamPattern = `{{(#|)([\w\.]+?)(| .*?)(| [:a-z]+?)}}`
-var reParamExtract = regexp.MustCompile(`{{(#|)([\w\.\ \-]+?)(| [^\w]+?)(|(:[\w]+){1,3}?)}}`)
+// var reParamExtract = regexp.MustCompile(`{{(#|)([\w\.\ \-]+?)(| [^\w]+?)(|(:[\w]+){1,3}?)}}`)
+var reParamExtract = regexp.MustCompile(`\{\{(#|)([^!@#$%^&*()_\-+=\[\]{};:'"\\|<>,?/~…]+?)(| [^\w]+?)(|(:[\w]+){1,3}?)}}`)
 
 // ParamType ..
 type ParamType int8

@@ -25,6 +25,8 @@ func TestIssues(t *testing.T) {
 			"Customer Surname":             "Wick",
 			"Footer note with many spaces": "A man has to look his best when it's time to get married. Or buried.",
 			"Letters":                      []string{"A", "B", "C"},
+			"Empfänger Vorname":            "John2",
+			"Empfänger Nachname":           "Wick2",
 		},
 	}
 
