@@ -17,6 +17,16 @@ func TestIssues(t *testing.T) {
 			"STREET":  "Brīvības iela",
 			"CITY":    "Rīga",
 			"ZIPCODE": "LV-1001",
+			"Letters": []string{"A", "B", "C"},
+		},
+		"issue.48.docx": {
+			"ISSUE":                        48,
+			"Customer Firstname":           "John",
+			"Customer Surname":             "Wick",
+			"Footer note with many spaces": "A man has to look his best when it's time to get married. Or buried.",
+			"Letters":                      []string{"A", "B", "C"},
+			"Empfänger Vorname":            "John2",
+			"Empfänger Nachname":           "Wick2",
 		},
 	}
 
