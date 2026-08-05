@@ -65,15 +65,18 @@ func (t *Template) expandPlaceholders(xnode *xmlNode) {
 				placeholderType = inlinePlaceholder
 			}
 
-			var formatter, trigger, params string
+			var formatter, trigger, vmerge, params string
 			if rowParam.Formatter != nil {
 				formatter = rowParam.Formatter.String()
 			}
 			if rowParam.Trigger != nil {
 				trigger = rowParam.Trigger.String()
 			}
-			if rowParam.Formatter != nil || rowParam.Trigger != nil {
-				params = " " + formatter + trigger
+			if rowParam.VMerge {
+				vmerge = ParamVMerge
+			}
+			if rowParam.Formatter != nil || rowParam.Trigger != nil || rowParam.VMerge {
+				params = " " + formatter + trigger + vmerge
 			}
 
 			paramData := t.params.FindAllByKey(rowParam.AbsoluteKey)
@@ -125,6 +128,17 @@ func (t *Template) expandPlaceholders(xnode *xmlNode) {
 						n.Content = bytes.ReplaceAll(n.Content, []byte(oldPlaceholder), []byte(replaceData))
 					})
 				}
+			}
+		}
+
+		// Vertical merge: mark cloned rows cells holding `:vmerge` placeholders.
+		// First cloned row gets vMerge "restart", all the next rows - "continue"
+		if bytes.Contains(contents, []byte(ParamVMerge)) {
+			for i, nn := range nnews {
+				if nn == nil {
+					continue
+				}
+				applyVMerge(nn, i)
 			}
 		}
 		return true
@@ -192,6 +206,7 @@ func (t *Template) replaceAndRunTrigger(p *Param, n *xmlNode, triggerParamOnly b
 	switch p.Type {
 	case StringParam:
 		// log.Printf("-- StringParam: %v", p.AbsoluteKey)
+		p.extractVMerge(n.Content)
 		if p.Formatter = p.extractFormatter(n.Content); p.Formatter != nil {
 			result := p.Formatter.ApplyFormat(p.Formatter.Format, []byte(p.Value))
 			p.Value = string(result)

@@ -47,6 +47,7 @@ type Param struct {
 	CompactKey  string // Users.Name
 
 	Separator string // {{Usernames SEPERATOR}}
+	VMerge    bool   // {{Name :vmerge}}
 
 	Trigger   *ParamTrigger
 	Formatter *ParamFormatter
@@ -87,6 +88,7 @@ func NewParamFromRaw(raw []byte) *Param {
 
 	p := NewParam(string(matches[0][2]))
 	p.Separator = strings.TrimSpace(string(matches[0][3]))
+	p.VMerge = isVMergeMark(matches[0][4])
 	p.Trigger = NewParamTrigger(matches[0][4])
 	p.Formatter = NewFormatter(matches[0][4])
 
@@ -115,30 +117,36 @@ func (p *Param) SetValue(val any) {
 
 // Placeholder .. {{Key}}
 func (p *Param) Placeholder() string {
-	var formatter, trigger, params string
+	var formatter, trigger, vmerge, params string
 	if p.Formatter != nil {
 		formatter = p.Formatter.String()
 	}
 	if p.Trigger != nil {
 		trigger = p.Trigger.String()
 	}
-	if p.Formatter != nil || p.Trigger != nil {
-		params = " " + formatter + trigger
+	if p.VMerge {
+		vmerge = ParamVMerge
+	}
+	if p.Formatter != nil || p.Trigger != nil || p.VMerge {
+		params = " " + formatter + trigger + vmerge
 	}
 	return "{{" + p.AbsoluteKey + params + "}}"
 }
 
 // PlaceholderKey .. {{#Key}}
 func (p *Param) PlaceholderKey() string {
-	var formatter, trigger, params string
+	var formatter, trigger, vmerge, params string
 	if p.Formatter != nil {
 		formatter = p.Formatter.String()
 	}
 	if p.Trigger != nil {
 		trigger = p.Trigger.String()
 	}
-	if p.Formatter != nil || p.Trigger != nil {
-		params = " " + formatter + trigger
+	if p.VMerge {
+		vmerge = ParamVMerge
+	}
+	if p.Formatter != nil || p.Trigger != nil || p.VMerge {
+		params = " " + formatter + trigger + vmerge
 	}
 	return "{{#" + p.AbsoluteKey + params + "}}"
 }
@@ -242,7 +250,7 @@ func (p *Param) extractTriggerFrom(buf []byte) *ParamTrigger {
 	return nil
 }
 
-// Try to extract trigger from raw contents specific to this param
+// Try to extract formatter from raw contents specific to this param
 func (p *Param) extractFormatter(buf []byte) *ParamFormatter {
 	prefixes := []string{
 		p.PlaceholderInline(),
@@ -265,6 +273,31 @@ func (p *Param) extractFormatter(buf []byte) *ParamFormatter {
 	}
 
 	return nil
+}
+
+// Try to extract vmerge mark from raw contents specific to this param
+func (p *Param) extractVMerge(buf []byte) bool {
+	prefixes := []string{
+		p.PlaceholderInline(),
+		p.PlaceholderKeyInline(),
+	}
+	for _, pref := range prefixes {
+		bpref := []byte(pref)
+		if !bytes.Contains(buf, bpref) {
+			continue
+		}
+
+		// Get part where vmerge mark is (remove placeholder prefix)
+		buf := bytes.SplitN(buf, bpref, 2)[1]
+
+		// Remove placeholder suffix and only raw params part left
+		buf = bytes.SplitN(buf, []byte("}}"), 2)[0]
+
+		p.VMerge = isVMergeMark(buf)
+		return p.VMerge
+	}
+
+	return false
 }
 
 // RunTrigger - execute trigger
