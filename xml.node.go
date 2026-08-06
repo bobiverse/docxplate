@@ -584,7 +584,7 @@ func (xnode *xmlNode) IsListItem() (bool, string) {
 	}
 
 	// Get list ID from attrs
-	var listID = numNode.Attr("val")
+	var listID = numNode.Attr("w-val")
 
 	return true, listID
 }

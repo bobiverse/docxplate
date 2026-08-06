@@ -18,11 +18,6 @@ const (
 	vMergeContinue = "continue"
 )
 
-// wNamespaceMain - namespace URI of parsed w: prefixed attributes.
-// encoding/xml resolves prefixes to URIs, so to be consistent with
-// parsed (and re-marshaled) document nodes use the same URI
-const wNamespaceMain = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
-
 // isVMergeMark - does raw params part (after param key) contain ":vmerge" mark
 func isVMergeMark(raw []byte) bool {
 	raw = bytes.TrimSpace(raw)
@@ -72,7 +67,7 @@ func applyVMerge(nrow *xmlNode, rowIndex int) {
 		vmerge := &xmlNode{
 			XMLName: xml.Name{Local: "w-vMerge"},
 			Attrs: []xml.Attr{{
-				Name:  xml.Name{Space: wNamespaceMain, Local: "val"},
+				Name:  xml.Name{Local: "w-val"},
 				Value: val,
 			}},
 			isNew: true,
