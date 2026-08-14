@@ -60,6 +60,37 @@ func (xnode *xmlNode) add(n *xmlNode) {
 	xnode.parent.addSub(n)
 }
 
+// insertChildAfter - insert n as xnode's child, right after mark.
+// If mark is nil, n becomes the first child
+func (xnode *xmlNode) insertChildAfter(mark, n *xmlNode) {
+	n.parent = xnode
+
+	// as first child
+	if mark == nil {
+		n.next = xnode.childFirst
+		if xnode.childFirst != nil {
+			xnode.childFirst.priv = n
+		}
+		xnode.childFirst = n
+		if xnode.childLast == nil {
+			xnode.childLast = n
+		}
+		xnode.childLenght++
+		return
+	}
+
+	n.priv = mark
+	n.next = mark.next
+	if mark.next != nil {
+		mark.next.priv = n
+	}
+	mark.next = n
+	if xnode.childLast == mark {
+		xnode.childLast = n
+	}
+	xnode.childLenght++
+}
+
 func (xnode *xmlNode) iterate(fn func(node *xmlNode) bool) {
 	if xnode == nil {
 		return

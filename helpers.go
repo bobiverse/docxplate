@@ -38,73 +38,80 @@ const xmlDeclaration = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`
 // are copied verbatim
 func replaceInXMLTags(buf []byte, from, to byte) []byte {
 	out := make([]byte, 0, len(buf))
-	n := len(buf)
 
-	for i := 0; i < n; {
+	for i := 0; i < len(buf); {
 		if buf[i] != '<' {
 			out = append(out, buf[i])
 			i++
 			continue
 		}
 
-		// copy comments, CDATA, processing instructions and doctype verbatim
-		var closer []byte
-		switch {
-		case bytes.HasPrefix(buf[i:], []byte("<!--")):
-			closer = []byte("-->")
-		case bytes.HasPrefix(buf[i:], []byte("<![CDATA[")):
-			closer = []byte("]]>")
-		case bytes.HasPrefix(buf[i:], []byte("<?")):
-			closer = []byte("?>")
-		case bytes.HasPrefix(buf[i:], []byte("<!")):
-			closer = []byte(">")
-		}
-		if closer != nil {
-			end := bytes.Index(buf[i+2:], closer)
-			if end < 0 {
-				end = n
-			} else {
-				end += 2 + len(closer)
-			}
-			out = append(out, buf[i:i+end]...)
-			i += end
+		if verbatim, end := verbatimXMLRegionEnd(buf, i); verbatim {
+			out = append(out, buf[i:end]...)
+			i = end
 			continue
 		}
 
-		// inside tag: replace until unquoted '>'
-		out = append(out, '<')
-		i++
-		var quote byte
-	tag:
-		for i < n {
-			c := buf[i]
-			if quote != 0 {
-				// inside quoted attribute value - copy as is
-				if c == quote {
-					quote = 0
-				}
-			} else {
-				switch c {
-				case '>', '/':
-					if c == '>' {
-						out = append(out, c)
-						i++
-						break tag
-					}
-				case '"', '\'':
-					quote = c
-				default:
-					if c == from {
-						c = to
-					}
-				}
-			}
-			out = append(out, c)
-			i++
-		}
+		out, i = appendXMLTag(out, buf, i, from, to)
 	}
 
 	return out
+}
+
+// verbatimXMLRegionEnd - does buf[i:] start a comment, CDATA section,
+// processing instruction or doctype that must be copied as-is, and
+// where does it end (index past the closer, or end of buf if unclosed)
+func verbatimXMLRegionEnd(buf []byte, i int) (ok bool, end int) {
+	var closer []byte
+	switch {
+	case bytes.HasPrefix(buf[i:], []byte("<!--")):
+		closer = []byte("-->")
+	case bytes.HasPrefix(buf[i:], []byte("<![CDATA[")):
+		closer = []byte("]]>")
+	case bytes.HasPrefix(buf[i:], []byte("<?")):
+		closer = []byte("?>")
+	case bytes.HasPrefix(buf[i:], []byte("<!")):
+		closer = []byte(">")
+	}
+	if closer == nil {
+		return false, 0
+	}
+
+	rel := bytes.Index(buf[i+2:], closer)
+	if rel < 0 {
+		return true, len(buf)
+	}
+	return true, i + 2 + rel + len(closer)
+}
+
+// appendXMLTag - append buf[i:] up to and including the tag's unquoted '>'
+// to out, replacing `from` with `to` in element/attribute names but not
+// inside quoted attribute values. Returns out and the index past the tag
+func appendXMLTag(out, buf []byte, i int, from, to byte) ([]byte, int) {
+	out = append(out, '<')
+	i++
+
+	var quote byte
+	for i < len(buf) {
+		c := buf[i]
+		switch {
+		case quote != 0:
+			// inside quoted attribute value - copy as is
+			if c == quote {
+				quote = 0
+			}
+		case c == '>':
+			return append(out, c), i + 1
+		case c == '"' || c == '\'':
+			quote = c
+		case c == from:
+			c = to
+		}
+		out = append(out, c)
+		i++
+	}
+
+	return out, i
 }
 
 // Encode struct to xml code string

@@ -115,9 +115,14 @@ func (p *Param) SetValue(val any) {
 
 }
 
-// Placeholder .. {{Key}}
-func (p *Param) Placeholder() string {
-	var formatter, trigger, vmerge, params string
+// paramsSuffix - " formatter trigger vmerge" part of a placeholder,
+// or "" when the param has none of them
+func (p *Param) paramsSuffix() string {
+	if p.Formatter == nil && p.Trigger == nil && !p.VMerge {
+		return ""
+	}
+
+	var formatter, trigger, vmerge string
 	if p.Formatter != nil {
 		formatter = p.Formatter.String()
 	}
@@ -127,28 +132,17 @@ func (p *Param) Placeholder() string {
 	if p.VMerge {
 		vmerge = ParamVMerge
 	}
-	if p.Formatter != nil || p.Trigger != nil || p.VMerge {
-		params = " " + formatter + trigger + vmerge
-	}
-	return "{{" + p.AbsoluteKey + params + "}}"
+	return " " + formatter + trigger + vmerge
+}
+
+// Placeholder .. {{Key}}
+func (p *Param) Placeholder() string {
+	return "{{" + p.AbsoluteKey + p.paramsSuffix() + "}}"
 }
 
 // PlaceholderKey .. {{#Key}}
 func (p *Param) PlaceholderKey() string {
-	var formatter, trigger, vmerge, params string
-	if p.Formatter != nil {
-		formatter = p.Formatter.String()
-	}
-	if p.Trigger != nil {
-		trigger = p.Trigger.String()
-	}
-	if p.VMerge {
-		vmerge = ParamVMerge
-	}
-	if p.Formatter != nil || p.Trigger != nil || p.VMerge {
-		params = " " + formatter + trigger + vmerge
-	}
-	return "{{#" + p.AbsoluteKey + params + "}}"
+	return "{{#" + p.AbsoluteKey + p.paramsSuffix() + "}}"
 }
 
 // PlaceholderInline .. {{Key ,}}
@@ -293,13 +287,11 @@ func (p *Param) extractVMerge(buf []byte) bool {
 		// Remove placeholder suffix and only raw params part left
 		buf = bytes.SplitN(buf, []byte("}}"), 2)[0]
 
-		p.VMerge = isVMergeMark(buf)
-		return p.VMerge
+		return isVMergeMark(buf)
 	}
 
 	// Param is reused for every node, so the mark of a previous
 	// node must not stay on this one
-	p.VMerge = false
 	return false
 }
 

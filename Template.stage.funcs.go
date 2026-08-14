@@ -65,19 +65,7 @@ func (t *Template) expandPlaceholders(xnode *xmlNode) {
 				placeholderType = inlinePlaceholder
 			}
 
-			var formatter, trigger, vmerge, params string
-			if rowParam.Formatter != nil {
-				formatter = rowParam.Formatter.String()
-			}
-			if rowParam.Trigger != nil {
-				trigger = rowParam.Trigger.String()
-			}
-			if rowParam.VMerge {
-				vmerge = ParamVMerge
-			}
-			if rowParam.Formatter != nil || rowParam.Trigger != nil || rowParam.VMerge {
-				params = " " + formatter + trigger + vmerge
-			}
+			params := rowParam.paramsSuffix()
 
 			paramData := t.params.FindAllByKey(rowParam.AbsoluteKey)
 			if len(paramData) == 0 {
@@ -206,7 +194,7 @@ func (t *Template) replaceAndRunTrigger(p *Param, n *xmlNode, triggerParamOnly b
 	switch p.Type {
 	case StringParam:
 		// log.Printf("-- StringParam: %v", p.AbsoluteKey)
-		p.extractVMerge(n.Content)
+		p.VMerge = p.extractVMerge(n.Content)
 		if p.Formatter = p.extractFormatter(n.Content); p.Formatter != nil {
 			result := p.Formatter.ApplyFormat(p.Formatter.Format, []byte(p.Value))
 			p.Value = string(result)

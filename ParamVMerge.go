@@ -63,7 +63,7 @@ func applyVMerge(nrow *xmlNode, rowIndex int) {
 				XMLName: xml.Name{Local: "w-tcPr"},
 				isNew:   true,
 			}
-			insertChildAfter(cell, nil, tcPr)
+			cell.insertChildAfter(nil, tcPr)
 		}
 
 		val := vMergeRestart
@@ -95,7 +95,7 @@ func applyVMerge(nrow *xmlNode, rowIndex int) {
 				}
 				return false
 			})
-			insertChildAfter(tcPr, mark, vmerge)
+			tcPr.insertChildAfter(mark, vmerge)
 		}
 
 		if rowIndex == 0 {
@@ -113,35 +113,4 @@ func applyVMerge(nrow *xmlNode, rowIndex int) {
 			r.delete()
 		}
 	}
-}
-
-// insertChildAfter - insert n into parent's child nodes right after mark.
-// If mark is nil, n becomes the first child
-func insertChildAfter(parent, mark, n *xmlNode) {
-	n.parent = parent
-
-	// as first child
-	if mark == nil {
-		n.next = parent.childFirst
-		if parent.childFirst != nil {
-			parent.childFirst.priv = n
-		}
-		parent.childFirst = n
-		if parent.childLast == nil {
-			parent.childLast = n
-		}
-		parent.childLenght++
-		return
-	}
-
-	n.priv = mark
-	n.next = mark.next
-	if mark.next != nil {
-		mark.next.priv = n
-	}
-	mark.next = n
-	if parent.childLast == mark {
-		parent.childLast = n
-	}
-	parent.childLenght++
 }
