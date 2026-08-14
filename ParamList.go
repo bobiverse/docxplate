@@ -242,6 +242,7 @@ func rowParams(row []byte) ParamList {
 		p := NewParam(string(match[2]))
 		p.RowPlaceholder = string(match[0])
 		p.Separator = string(match[3])
+		p.VMerge = isVMergeMark(match[4])
 		p.Trigger = NewParamTrigger(match[4])
 		p.Formatter = NewFormatter(match[4])
 		params = append(params, p)

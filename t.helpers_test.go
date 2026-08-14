@@ -78,3 +78,29 @@ func TestStructToXMLBytesError(t *testing.T) {
 		}
 	})
 }
+
+// TestInsertChildAfterHeadResetsPriv - inserting as first child (mark == nil)
+// must reset n.priv, or a node that already had one from elsewhere leaves
+// it stale. That stale priv then corrupts unrelated state: delete() sets
+// parent.childLast = xnode.priv when xnode was childLast, so a stale priv
+// there points parent.childLast at a node that was never really a child
+func TestInsertChildAfterHeadResetsPriv(t *testing.T) {
+	parent := &xmlNode{}
+	someOtherNode := &xmlNode{}
+	n := &xmlNode{priv: someOtherNode} // simulate a node moved from elsewhere
+
+	parent.insertChildAfter(nil, n)
+
+	if n.priv != nil {
+		t.Fatalf("n.priv left stale at %p, want nil (n is now the first child)", n.priv)
+	}
+
+	// n is parent's only child here, so delete() also touches childLast
+	n.delete()
+	if parent.childLast == someOtherNode {
+		t.Fatalf("delete() left parent.childLast pointing at someOtherNode, which was never a child")
+	}
+	if parent.childLast != nil {
+		t.Fatalf("parent.childLast = %p, want nil (parent has no children left)", parent.childLast)
+	}
+}

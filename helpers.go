@@ -29,8 +29,107 @@ func readerBytes(rdr io.ReadCloser) []byte {
 	return buf.Bytes()
 }
 
+// xmlDeclaration - standard XML declaration for OOXML parts
+const xmlDeclaration = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` + "\r\n"
+
+// replaceInXMLTags - replace `from` with `to` byte inside XML tag regions
+// (element and attribute names), except within quoted attribute values.
+// Comments, CDATA sections, processing instructions and doctype
+// are copied verbatim
+func replaceInXMLTags(buf []byte, from, to byte) []byte {
+	out := make([]byte, 0, len(buf))
+
+	for i := 0; i < len(buf); {
+		if buf[i] != '<' {
+			out = append(out, buf[i])
+			i++
+			continue
+		}
+
+		if verbatim, end := verbatimXMLRegionEnd(buf, i); verbatim {
+			out = append(out, buf[i:end]...)
+			i = end
+			continue
+		}
+
+		out, i = appendXMLTag(out, buf, i, from, to)
+	}
+
+	return out
+}
+
+// verbatimXMLRegionEnd - does buf[i:] start a comment, CDATA section,
+// processing instruction or doctype that must be copied as-is, and
+// where does it end (index past the closer, or end of buf if unclosed)
+func verbatimXMLRegionEnd(buf []byte, i int) (ok bool, end int) {
+	var closer []byte
+	switch {
+	case bytes.HasPrefix(buf[i:], []byte("<!--")):
+		closer = []byte("-->")
+	case bytes.HasPrefix(buf[i:], []byte("<![CDATA[")):
+		closer = []byte("]]>")
+	case bytes.HasPrefix(buf[i:], []byte("<?")):
+		closer = []byte("?>")
+	case bytes.HasPrefix(buf[i:], []byte("<!")):
+		closer = []byte(">")
+	}
+	if closer == nil {
+		return false, 0
+	}
+
+	// +2 skips "<!"/"<?", the shortest opener among all four cases,
+	// so the search can't match the opener itself as the closer
+	rel := bytes.Index(buf[i+2:], closer)
+	if rel < 0 {
+		return true, len(buf)
+	}
+	return true, i + 2 + rel + len(closer)
+}
+
+// appendXMLTag - append buf[i:] up to and including the tag's unquoted '>'
+// to out, replacing `from` with `to` in element/attribute names but not
+// inside quoted attribute values. Returns out and the index past the tag
+func appendXMLTag(out, buf []byte, i int, from, to byte) ([]byte, int) {
+	out = append(out, '<')
+	i++
+
+	var quote byte
+	for i < len(buf) {
+		c := buf[i]
+		switch {
+		case quote != 0:
+			// inside quoted attribute value - copy as is
+			if c == quote {
+				quote = 0
+			}
+		case c == '>':
+			return append(out, c), i + 1
+		case c == '"' || c == '\'':
+			quote = c
+		case c == from:
+			c = to
+		}
+		out = append(out, c)
+		i++
+	}
+
+	return out, i
+}
+
 // Encode struct to xml code string
 func structToXMLBytes(v any) []byte {
+	// internal list marker attrs must not leak into output
+	if xnode, ok := v.(*xmlNode); ok {
+		xnode.Walk(func(n *xmlNode) {
+			for i := 0; i < len(n.Attrs); i++ {
+				if n.Attrs[i].Name.Local == "list-id" {
+					n.Attrs = append(n.Attrs[:i], n.Attrs[i+1:]...)
+					i--
+				}
+			}
+		})
+	}
+
 	// buf, err := xml.MarshalIndent(v, "", "  ")
 	buf, err := xml.Marshal(v)
 	if err != nil {
@@ -38,22 +137,13 @@ func structToXMLBytes(v any) []byte {
 		return nil
 	}
 
-	// This is fixing `xmlns` attribute representation after marshal
-	buf = bytes.ReplaceAll(buf, []byte(` xmlns:_xmlns="xmlns"`), []byte(""))
-	buf = bytes.ReplaceAll(buf, []byte(`_xmlns:`), []byte("xmlns:"))
-	buf = bytes.ReplaceAll(buf, []byte(` xmlns:r="r"`), []byte(""))
-	buf = bytes.ReplaceAll(buf, []byte(` xmlns:o="o"`), []byte(""))
+	// restore original name prefixes encoded in bytesToXMLStruct
+	buf = replaceInXMLTags(buf, '-', ':')
 
-	// xml decoder doesnt support <w:t so using placeholder with "w-" (<w-t)
-	// Or you have solution?
-	buf = bytes.ReplaceAll(buf, []byte("<w-"), []byte("<w:"))
-	buf = bytes.ReplaceAll(buf, []byte("</w-"), []byte("</w:"))
-	buf = bytes.ReplaceAll(buf, []byte("<v-"), []byte("<v:"))
-	buf = bytes.ReplaceAll(buf, []byte("</v-"), []byte("</v:"))
+	// restore default namespace declaration
+	buf = bytes.ReplaceAll(buf, []byte(` xmlns_="`), []byte(` xmlns="`))
 
-	// buf = bytes.Replace(buf, []byte("w-item"), []byte("w-p"), -1)
-
-	return buf
+	return append([]byte(xmlDeclaration), buf...)
 }
 
 // Is slice contains item

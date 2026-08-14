@@ -76,6 +76,23 @@ Or no separator at all `{{Nicknames }}` (still one space required to mark placeh
     ---------------------------------------------------
     Here is my nicknames: amber, AL, ice :)
 
+### Merge a table cell over multiplied rows
+A slice param multiplies its table row. Add `:vmerge` to a placeholder in that row
+to merge its cell down over all the new rows.
+
+The first row keeps the value and gets `<w:vMerge w:val="restart">`.
+Every next row gets `<w:vMerge w:val="continue">` and an empty cell.
+
+    | {{Friends.Name}} | {{Friends.Age}} | is friend to {{Name :vmerge}} |
+    ---------------------------------------------------
+    | Bob              | 28              | is friend to Alice            |
+    | Cecilia          | 29              |                               |
+    | Den              | 30              |                               |
+
+The last column is one cell over the three rows.
+
+The mark works with a formatter too: `{{Name :upper:vmerge}}`.
+
 
 
 ## Bugs

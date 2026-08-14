@@ -9,12 +9,15 @@ import (
 
 // Convert given bytes to struct of xml nodes
 func (t *Template) bytesToXMLStruct(buf []byte) *xmlNode {
-	// Do not strip <w: entiraly, but keep reference as w-t
-	// So any string without w: would stay same, but all w- will be replaced again
-	buf = bytes.ReplaceAll(buf, []byte("<w:"), []byte("<w-"))
-	buf = bytes.ReplaceAll(buf, []byte("</w:"), []byte("</w-"))
-	buf = bytes.ReplaceAll(buf, []byte("<v:"), []byte("<v-"))
-	buf = bytes.ReplaceAll(buf, []byte("</v:"), []byte("</v-"))
+	// encoding/xml resolves name prefixes to namespace URIs and
+	// invents new prefixes on marshal (w:val -> main:val etc).
+	// Encode ":" inside tag names as "-" so original prefixes
+	// are kept as plain names (restored in structToXMLBytes)
+	buf = replaceInXMLTags(buf, ':', '-')
+
+	// neutralize default namespace declaration so unprefixed
+	// elements are not bound to it (restored in structToXMLBytes)
+	buf = bytes.ReplaceAll(buf, []byte(` xmlns="`), []byte(` xmlns_="`))
 
 	xdocNode := &xmlNode{}
 	if err := xml.Unmarshal(buf, xdocNode); err != nil {
