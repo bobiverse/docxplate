@@ -77,6 +77,8 @@ func verbatimXMLRegionEnd(buf []byte, i int) (ok bool, end int) {
 		return false, 0
 	}
 
+	// +2 skips "<!"/"<?", the shortest opener among all four cases,
+	// so the search can't match the opener itself as the closer
 	rel := bytes.Index(buf[i+2:], closer)
 	if rel < 0 {
 		return true, len(buf)

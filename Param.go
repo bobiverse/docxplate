@@ -219,8 +219,10 @@ func (p *Param) Depth() int {
 	return strings.Count(p.AbsoluteKey, ".") + 1
 }
 
-// Try to extract trigger from raw contents specific to this param
-func (p *Param) extractTriggerFrom(buf []byte) *ParamTrigger {
+// rawParamsFrom - raw params part of buf, between this param's placeholder
+// prefix ({{Key or {{#Key) and the placeholder's closing "}}".
+// ok is false when buf holds none of this param's placeholder prefixes
+func (p *Param) rawParamsFrom(buf []byte) (raw []byte, ok bool) {
 	prefixes := []string{
 		p.PlaceholderInline(),
 		p.PlaceholderKeyInline(),
@@ -231,68 +233,47 @@ func (p *Param) extractTriggerFrom(buf []byte) *ParamTrigger {
 			continue
 		}
 
-		// Get part where trigger is (remove plaheolder prefix)
-		buf := bytes.SplitN(buf, bpref, 2)[1]
+		// Get part where params are (remove placeholder prefix)
+		raw = bytes.SplitN(buf, bpref, 2)[1]
 
-		// Remove placeholder suffix and only raw trigger part left
-		buf = bytes.SplitN(buf, []byte("}}"), 2)[0]
+		// Remove placeholder suffix and only raw params part left
+		raw = bytes.SplitN(raw, []byte("}}"), 2)[0]
 
-		p.Trigger = NewParamTrigger(buf)
-		return p.Trigger
+		return raw, true
 	}
 
-	return nil
+	return nil, false
+}
+
+// Try to extract trigger from raw contents specific to this param
+func (p *Param) extractTriggerFrom(buf []byte) *ParamTrigger {
+	raw, ok := p.rawParamsFrom(buf)
+	if !ok {
+		return nil
+	}
+	p.Trigger = NewParamTrigger(raw)
+	return p.Trigger
 }
 
 // Try to extract formatter from raw contents specific to this param
 func (p *Param) extractFormatter(buf []byte) *ParamFormatter {
-	prefixes := []string{
-		p.PlaceholderInline(),
-		p.PlaceholderKeyInline(),
+	raw, ok := p.rawParamsFrom(buf)
+	if !ok {
+		return nil
 	}
-	for _, pref := range prefixes {
-		bpref := []byte(pref)
-		if !bytes.Contains(buf, bpref) {
-			continue
-		}
-
-		// Get part where trigger is (remove plaheolder prefix)
-		buf := bytes.SplitN(buf, bpref, 2)[1]
-
-		// Remove placeholder suffix and only raw trigger part left
-		buf = bytes.SplitN(buf, []byte("}}"), 2)[0]
-
-		p.Formatter = NewFormatter(buf)
-		return p.Formatter
-	}
-
-	return nil
+	p.Formatter = NewFormatter(raw)
+	return p.Formatter
 }
 
 // Try to extract vmerge mark from raw contents specific to this param
 func (p *Param) extractVMerge(buf []byte) bool {
-	prefixes := []string{
-		p.PlaceholderInline(),
-		p.PlaceholderKeyInline(),
+	raw, ok := p.rawParamsFrom(buf)
+	if !ok {
+		// Param is reused for every node, so the mark of a previous
+		// node must not stay on this one
+		return false
 	}
-	for _, pref := range prefixes {
-		bpref := []byte(pref)
-		if !bytes.Contains(buf, bpref) {
-			continue
-		}
-
-		// Get part where vmerge mark is (remove placeholder prefix)
-		buf := bytes.SplitN(buf, bpref, 2)[1]
-
-		// Remove placeholder suffix and only raw params part left
-		buf = bytes.SplitN(buf, []byte("}}"), 2)[0]
-
-		return isVMergeMark(buf)
-	}
-
-	// Param is reused for every node, so the mark of a previous
-	// node must not stay on this one
-	return false
+	return isVMergeMark(raw)
 }
 
 // RunTrigger - execute trigger

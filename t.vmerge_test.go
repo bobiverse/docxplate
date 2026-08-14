@@ -44,30 +44,7 @@ func TestVMerge(t *testing.T) {
 		t.Fatalf("Bytes: %s", err)
 	}
 
-	// read rendered word/document.xml
-	zr, err := zip.NewReader(bytes.NewReader(buf), int64(len(buf)))
-	if err != nil {
-		t.Fatalf("zip.NewReader: %s", err)
-	}
-	var docXML string
-	for _, f := range zr.File {
-		if f.Name != "word/document.xml" {
-			continue
-		}
-		rc, err := f.Open()
-		if err != nil {
-			t.Fatalf("open %s: %s", f.Name, err)
-		}
-		b, err := io.ReadAll(rc)
-		rc.Close()
-		if err != nil {
-			t.Fatalf("read %s: %s", f.Name, err)
-		}
-		docXML = string(b)
-	}
-	if docXML == "" {
-		t.Fatal("word/document.xml not found in rendered docx")
-	}
+	docXML := documentXMLFromBytes(t, buf)
 
 	// first table is rendered "Template", second one is untouched "Expect"
 	tables := strings.Split(docXML, "<w:tbl>")
@@ -212,15 +189,11 @@ func vmergeCell(t *testing.T, doc string) (start int, cell string) {
 	return start, doc[start:i]
 }
 
-// renderedTable - first table of the rendered document
-func renderedTable(t *testing.T, tdoc *docxplate.Template) string {
+// documentXMLFromBytes - word/document.xml of a rendered docx
+func documentXMLFromBytes(t *testing.T, docxBytes []byte) string {
 	t.Helper()
 
-	buf, err := tdoc.Bytes()
-	if err != nil {
-		t.Fatalf("Bytes: %s", err)
-	}
-	zr, err := zip.NewReader(bytes.NewReader(buf), int64(len(buf)))
+	zr, err := zip.NewReader(bytes.NewReader(docxBytes), int64(len(docxBytes)))
 	if err != nil {
 		t.Fatalf("zip.NewReader: %s", err)
 	}
@@ -237,19 +210,35 @@ func renderedTable(t *testing.T, tdoc *docxplate.Template) string {
 		if err != nil {
 			t.Fatalf("read %s: %s", f.Name, err)
 		}
-		return strings.SplitN(strings.Split(string(b), "<w:tbl>")[1], "</w:tbl>", 2)[0]
+		return string(b)
 	}
 	t.Fatal("word/document.xml not found in rendered docx")
 	return ""
 }
 
-var vmergeUser = &User{
-	Name: "Alice",
-	Friends: []*User{
-		{Name: "Bob", Age: 28},
-		{Name: "Cecilia", Age: 29},
-		{Name: "Den", Age: 30},
-	},
+// renderedTable - first table of the rendered document
+func renderedTable(t *testing.T, tdoc *docxplate.Template) string {
+	t.Helper()
+
+	buf, err := tdoc.Bytes()
+	if err != nil {
+		t.Fatalf("Bytes: %s", err)
+	}
+	docXML := documentXMLFromBytes(t, buf)
+	return strings.SplitN(strings.Split(docXML, "<w:tbl>")[1], "</w:tbl>", 2)[0]
+}
+
+// vmergeUser - fresh test data for each test, so none of them
+// can end up sharing (and accidentally mutating) one User
+func vmergeUser() *User {
+	return &User{
+		Name: "Alice",
+		Friends: []*User{
+			{Name: "Bob", Age: 28},
+			{Name: "Cecilia", Age: 29},
+			{Name: "Den", Age: 30},
+		},
+	}
 }
 
 // TestVMergeDoesNotLeak - the same param is reused for every node,
@@ -260,7 +249,7 @@ func TestVMergeDoesNotLeak(t *testing.T) {
 		return strings.Replace(doc, "</w:body>",
 			"<w:p><w:r><w:t>PLAIN={{Name}}</w:t></w:r></w:p></w:body>", 1)
 	})
-	tdoc.Params(vmergeUser)
+	tdoc.Params(vmergeUser())
 
 	plaintext := tdoc.Plaintext()
 	if !strings.Contains(plaintext, "PLAIN=Alice") {
@@ -280,7 +269,7 @@ func TestVMergeCellWithoutTcPr(t *testing.T) {
 		}
 		return doc[:start] + cell[:a] + cell[b+len("</w:tcPr>"):] + doc[start+len(cell):]
 	})
-	tdoc.Params(vmergeUser)
+	tdoc.Params(vmergeUser())
 
 	tbl := renderedTable(t, tdoc)
 	if n := strings.Count(tbl, `<w:vMerge w:val="restart"`); n < 1 {
@@ -300,7 +289,7 @@ func TestVMergeCellAlreadyMerged(t *testing.T) {
 			`<w:vMerge w:val="restart"/></w:tcPr>`, 1)
 		return doc[:start] + merged + doc[start+len(cell):]
 	})
-	tdoc.Params(vmergeUser)
+	tdoc.Params(vmergeUser())
 
 	tbl := renderedTable(t, tdoc)
 	for _, tcPr := range regexp.MustCompile(`<w:tcPr>.*?</w:tcPr>`).FindAllString(tbl, -1) {
