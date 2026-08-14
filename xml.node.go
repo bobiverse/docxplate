@@ -67,6 +67,7 @@ func (xnode *xmlNode) insertChildAfter(mark, n *xmlNode) {
 
 	// as first child
 	if mark == nil {
+		n.priv = nil
 		n.next = xnode.childFirst
 		if xnode.childFirst != nil {
 			xnode.childFirst.priv = n
