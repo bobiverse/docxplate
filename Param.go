@@ -297,6 +297,9 @@ func (p *Param) extractVMerge(buf []byte) bool {
 		return p.VMerge
 	}
 
+	// Param is reused for every node, so the mark of a previous
+	// node must not stay on this one
+	p.VMerge = false
 	return false
 }
 

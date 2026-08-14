@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"io"
+	"os"
 	"regexp"
 	"strings"
 	"testing"
@@ -53,9 +54,15 @@ func TestVMerge(t *testing.T) {
 		if f.Name != "word/document.xml" {
 			continue
 		}
-		rc, _ := f.Open()
-		b, _ := io.ReadAll(rc)
+		rc, err := f.Open()
+		if err != nil {
+			t.Fatalf("open %s: %s", f.Name, err)
+		}
+		b, err := io.ReadAll(rc)
 		rc.Close()
+		if err != nil {
+			t.Fatalf("read %s: %s", f.Name, err)
+		}
 		docXML = string(b)
 	}
 	if docXML == "" {
@@ -139,5 +146,166 @@ func TestVMerge(t *testing.T) {
 	}
 	if strings.Contains(plaintext, ":vmerge") {
 		t.Errorf("rendered plaintext must not contain :vmerge mark")
+	}
+}
+
+// vmergeVariant - build a template from test-data/vmerge.docx
+// with word/document.xml modified by `edit`
+func vmergeVariant(t *testing.T, edit func(string) string) *docxplate.Template {
+	t.Helper()
+
+	raw, err := os.ReadFile("test-data/vmerge.docx")
+	if err != nil {
+		t.Fatalf("ReadFile: %s", err)
+	}
+	zr, err := zip.NewReader(bytes.NewReader(raw), int64(len(raw)))
+	if err != nil {
+		t.Fatalf("zip.NewReader: %s", err)
+	}
+
+	out := new(bytes.Buffer)
+	zw := zip.NewWriter(out)
+	for _, f := range zr.File {
+		rc, err := f.Open()
+		if err != nil {
+			t.Fatalf("open %s: %s", f.Name, err)
+		}
+		b, err := io.ReadAll(rc)
+		rc.Close()
+		if err != nil {
+			t.Fatalf("read %s: %s", f.Name, err)
+		}
+		if f.Name == "word/document.xml" {
+			b = []byte(edit(string(b)))
+		}
+		w, err := zw.Create(f.Name)
+		if err != nil {
+			t.Fatalf("create %s: %s", f.Name, err)
+		}
+		if _, err := w.Write(b); err != nil {
+			t.Fatalf("write %s: %s", f.Name, err)
+		}
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatalf("zip close: %s", err)
+	}
+
+	tdoc, err := docxplate.OpenTemplateWithBytes(out.Bytes())
+	if err != nil {
+		t.Fatalf("OpenTemplateWithBytes: %s", err)
+	}
+	return tdoc
+}
+
+// vmergeCell - `{{Name :vmerge}}` cell markup up to the placeholder
+func vmergeCell(t *testing.T, doc string) (start int, cell string) {
+	t.Helper()
+
+	i := strings.Index(doc, "{{Name :vmerge}}")
+	if i < 0 {
+		t.Fatal("{{Name :vmerge}} not found in template")
+	}
+	start = strings.LastIndex(doc[:i], "<w:tc>")
+	if start < 0 {
+		t.Fatal("<w:tc> of :vmerge placeholder not found")
+	}
+	return start, doc[start:i]
+}
+
+// renderedTable - first table of the rendered document
+func renderedTable(t *testing.T, tdoc *docxplate.Template) string {
+	t.Helper()
+
+	buf, err := tdoc.Bytes()
+	if err != nil {
+		t.Fatalf("Bytes: %s", err)
+	}
+	zr, err := zip.NewReader(bytes.NewReader(buf), int64(len(buf)))
+	if err != nil {
+		t.Fatalf("zip.NewReader: %s", err)
+	}
+	for _, f := range zr.File {
+		if f.Name != "word/document.xml" {
+			continue
+		}
+		rc, err := f.Open()
+		if err != nil {
+			t.Fatalf("open %s: %s", f.Name, err)
+		}
+		b, err := io.ReadAll(rc)
+		rc.Close()
+		if err != nil {
+			t.Fatalf("read %s: %s", f.Name, err)
+		}
+		return strings.SplitN(strings.Split(string(b), "<w:tbl>")[1], "</w:tbl>", 2)[0]
+	}
+	t.Fatal("word/document.xml not found in rendered docx")
+	return ""
+}
+
+var vmergeUser = &User{
+	Name: "Alice",
+	Friends: []*User{
+		{Name: "Bob", Age: 28},
+		{Name: "Cecilia", Age: 29},
+		{Name: "Den", Age: 30},
+	},
+}
+
+// TestVMergeDoesNotLeak - the same param is reused for every node,
+// so `:vmerge` on one placeholder must not stick to a plain
+// `{{Name}}` somewhere else in the document
+func TestVMergeDoesNotLeak(t *testing.T) {
+	tdoc := vmergeVariant(t, func(doc string) string {
+		return strings.Replace(doc, "</w:body>",
+			"<w:p><w:r><w:t>PLAIN={{Name}}</w:t></w:r></w:p></w:body>", 1)
+	})
+	tdoc.Params(vmergeUser)
+
+	plaintext := tdoc.Plaintext()
+	if !strings.Contains(plaintext, "PLAIN=Alice") {
+		t.Errorf("plain {{Name}} must be replaced, got:\n%s", plaintext)
+	}
+}
+
+// TestVMergeCellWithoutTcPr - `w:tcPr` is optional in a cell,
+// the merge must still happen
+func TestVMergeCellWithoutTcPr(t *testing.T) {
+	tdoc := vmergeVariant(t, func(doc string) string {
+		start, cell := vmergeCell(t, doc)
+		a := strings.Index(cell, "<w:tcPr>")
+		b := strings.Index(cell, "</w:tcPr>")
+		if a < 0 || b < 0 {
+			t.Fatal("w:tcPr not found in :vmerge cell")
+		}
+		return doc[:start] + cell[:a] + cell[b+len("</w:tcPr>"):] + doc[start+len(cell):]
+	})
+	tdoc.Params(vmergeUser)
+
+	tbl := renderedTable(t, tdoc)
+	if n := strings.Count(tbl, `<w:vMerge w:val="restart"`); n < 1 {
+		t.Errorf("cell without w:tcPr must still get vMerge restart, got %d", n)
+	}
+	if n := strings.Count(tbl, "<w:t>Alice</w:t>"); n != 1 {
+		t.Errorf("merged value count: expected 1, got %d", n)
+	}
+}
+
+// TestVMergeCellAlreadyMerged - a cell merged in the template already
+// has `w:vMerge`, and CT_TcPr allows only one of them
+func TestVMergeCellAlreadyMerged(t *testing.T) {
+	tdoc := vmergeVariant(t, func(doc string) string {
+		start, cell := vmergeCell(t, doc)
+		merged := strings.Replace(cell, "</w:tcPr>",
+			`<w:vMerge w:val="restart"/></w:tcPr>`, 1)
+		return doc[:start] + merged + doc[start+len(cell):]
+	})
+	tdoc.Params(vmergeUser)
+
+	tbl := renderedTable(t, tdoc)
+	for _, tcPr := range regexp.MustCompile(`<w:tcPr>.*?</w:tcPr>`).FindAllString(tbl, -1) {
+		if n := strings.Count(tcPr, "<w:vMerge"); n > 1 {
+			t.Errorf("w:tcPr holds %d w:vMerge, only one allowed", n)
+		}
 	}
 }

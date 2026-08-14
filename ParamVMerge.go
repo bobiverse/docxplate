@@ -55,34 +55,48 @@ func applyVMerge(nrow *xmlNode, rowIndex int) {
 
 	for _, cell := range cells {
 
+		// w-tcPr is optional in a template, but w-vMerge must go in it.
+		// CT_Tc wants it as the first child
 		tcPr := cell.nodeBySelector("w-tcPr")
 		if tcPr == nil {
-			continue
+			tcPr = &xmlNode{
+				XMLName: xml.Name{Local: "w-tcPr"},
+				isNew:   true,
+			}
+			insertChildAfter(cell, nil, tcPr)
 		}
 
 		val := vMergeRestart
 		if rowIndex > 0 {
 			val = vMergeContinue
 		}
-		vmerge := &xmlNode{
-			XMLName: xml.Name{Local: "w-vMerge"},
-			Attrs: []xml.Attr{{
-				Name:  xml.Name{Local: "w-val"},
-				Value: val,
-			}},
-			isNew: true,
-		}
+		valAttr := []xml.Attr{{
+			Name:  xml.Name{Local: "w-val"},
+			Value: val,
+		}}
 
-		// w-vMerge goes after w-tcW/w-gridSpan/w-hMerge and before w-tcBorders
-		var mark *xmlNode
-		tcPr.childFirst.iterate(func(n *xmlNode) bool {
-			switch n.Tag() {
-			case "w-cnfStyle", "w-tcW", "w-gridSpan", "w-hMerge":
-				mark = n
+		// Cell can be merged already in the template.
+		// CT_TcPr allows only one w-vMerge, so reuse it
+		if vmerge := tcPr.nodeBySelector("w-vMerge"); vmerge != nil {
+			vmerge.Attrs = valAttr
+		} else {
+			vmerge := &xmlNode{
+				XMLName: xml.Name{Local: "w-vMerge"},
+				Attrs:   valAttr,
+				isNew:   true,
 			}
-			return false
-		})
-		insertChildAfter(tcPr, mark, vmerge)
+
+			// w-vMerge goes after w-tcW/w-gridSpan/w-hMerge and before w-tcBorders
+			var mark *xmlNode
+			tcPr.childFirst.iterate(func(n *xmlNode) bool {
+				switch n.Tag() {
+				case "w-cnfStyle", "w-tcW", "w-gridSpan", "w-hMerge":
+					mark = n
+				}
+				return false
+			})
+			insertChildAfter(tcPr, mark, vmerge)
+		}
 
 		if rowIndex == 0 {
 			continue
