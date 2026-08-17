@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"fmt"
+	"os"
 	"regexp"
 	"strings"
 	"testing"
@@ -63,13 +64,13 @@ func TestIssue51ReopenGeneratedDocAsTemplate(t *testing.T) {
 		t.Fatalf("OpenTemplate: %s", err)
 	}
 	tdoc.Params(withBody{Body: "Example Body"})
-	step1, err := tdoc.Bytes()
-	if err != nil {
-		t.Fatalf("step1 Bytes: %s", err)
+	step1Path := "test-data/~test-issue.51.step1.docx"
+	if err := tdoc.ExportDocx(step1Path); err != nil {
+		t.Fatalf("step1 ExportDocx: %s", err)
 	}
 
 	// Re-open step1 output as a new template and fill the image placeholder
-	tdoc2, err := docxplate.OpenTemplateWithBytes(step1)
+	tdoc2, err := docxplate.OpenTemplate(step1Path)
 	if err != nil {
 		t.Fatalf("re-open generated doc: %s", err)
 	}
@@ -78,9 +79,14 @@ func TestIssue51ReopenGeneratedDocAsTemplate(t *testing.T) {
 			{Path: "images/avatar-1.png", Width: 50, Height: 50},
 		},
 	})
-	step2, err := tdoc2.Bytes()
+	step2Path := "test-data/~test-issue.51.docx"
+	if err := tdoc2.ExportDocx(step2Path); err != nil {
+		t.Fatalf("step2 ExportDocx: %s", err)
+	}
+
+	step2, err := os.ReadFile(step2Path) // #nosec G304 - test fixture path, not user input
 	if err != nil {
-		t.Fatalf("step2 Bytes: %s", err)
+		t.Fatalf("read step2 output: %s", err)
 	}
 
 	zr, err := zip.NewReader(bytes.NewReader(step2), int64(len(step2)))
