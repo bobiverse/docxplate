@@ -93,10 +93,14 @@ func TestIssue51ReopenGeneratedDocAsTemplate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("output is not a valid zip: %s", err)
 	}
+
+	var contentTypesFileCount int
 	for _, f := range zr.File {
 		if f.Name != "[Content_Types].xml" {
 			continue
 		}
+		contentTypesFileCount++
+
 		fr, err := f.Open()
 		if err != nil {
 			t.Fatalf("open [Content_Types].xml: %s", err)
@@ -111,5 +115,9 @@ func TestIssue51ReopenGeneratedDocAsTemplate(t *testing.T) {
 		if len(matches) != 1 {
 			t.Fatalf("[Content_Types].xml has %d Default Extension=\"png\" entries, want 1 (duplicate entries make Word reject the file): %s", len(matches), buf.String())
 		}
+	}
+	// Word rejects a docx with a missing or duplicated [Content_Types].xml entry in the zip.
+	if contentTypesFileCount != 1 {
+		t.Fatalf("zip has %d [Content_Types].xml entries, want exactly 1", contentTypesFileCount)
 	}
 }
