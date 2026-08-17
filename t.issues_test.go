@@ -84,22 +84,67 @@ func TestIssue51ReopenGeneratedDocAsTemplate(t *testing.T) {
 		t.Fatalf("step2 ExportDocx: %s", err)
 	}
 
-	step2, err := os.ReadFile(step2Path) // #nosec G304 - test fixture path, not user input
+	contentTypesXML := readContentTypesXML(t, step2Path)
+
+	matches := regexp.MustCompile(`Extension="png"`).FindAllString(contentTypesXML, -1)
+	if len(matches) != 1 {
+		t.Fatalf("[Content_Types].xml has %d Default Extension=\"png\" entries, want 1 (duplicate entries make Word reject the file): %s", len(matches), contentTypesXML)
+	}
+}
+
+// TestIssue51MultipleImageExtensions - when a single Params() call embeds images of
+// different, not-yet-registered extensions, each processImage() call must see the
+// content types added by the previous call in the same run - otherwise only the last
+// extension survives and the docx ends up with an image referencing a content type
+// that was never registered (invalid OOXML that Word refuses to open).
+func TestIssue51MultipleImageExtensions(t *testing.T) {
+	tdoc, err := docxplate.OpenTemplate("test-data/issue.51.docx")
 	if err != nil {
-		t.Fatalf("read step2 output: %s", err)
+		t.Fatalf("OpenTemplate: %s", err)
+	}
+	tdoc.Params(struct{ Images []*docxplate.Image }{
+		Images: []*docxplate.Image{
+			{Path: "images/avatar-1.jpg", Width: 20, Height: 20},
+			{Path: "images/avatar-1.gif", Width: 20, Height: 20},
+		},
+	})
+	outPath := "test-data/~test-issue.51.multi-ext.docx"
+	if err := tdoc.ExportDocx(outPath); err != nil {
+		t.Fatalf("ExportDocx: %s", err)
 	}
 
-	zr, err := zip.NewReader(bytes.NewReader(step2), int64(len(step2)))
+	contentTypesXML := readContentTypesXML(t, outPath)
+	for _, ext := range []string{"jpg", "gif"} {
+		want := fmt.Sprintf(`Extension="%s"`, ext)
+		if !strings.Contains(contentTypesXML, want) {
+			t.Fatalf("[Content_Types].xml is missing %s (lost when a later image overwrote it): %s", want, contentTypesXML)
+		}
+	}
+}
+
+// readContentTypesXML - open docxPath as a zip and return the contents of its
+// [Content_Types].xml. Fails the test if the zip is invalid or the entry isn't found
+// exactly once (Word rejects a docx missing or duplicating that entry).
+func readContentTypesXML(t *testing.T, docxPath string) string {
+	t.Helper()
+
+	raw, err := os.ReadFile(docxPath) // #nosec G304 - test fixture path, not user input
 	if err != nil {
-		t.Fatalf("output is not a valid zip: %s", err)
+		t.Fatalf("read %s: %s", docxPath, err)
 	}
 
-	var contentTypesFileCount int
+	zr, err := zip.NewReader(bytes.NewReader(raw), int64(len(raw)))
+	if err != nil {
+		t.Fatalf("%s is not a valid zip: %s", docxPath, err)
+	}
+
+	var found int
+	var contentTypesXML string
 	for _, f := range zr.File {
 		if f.Name != "[Content_Types].xml" {
 			continue
 		}
-		contentTypesFileCount++
+		found++
 
 		fr, err := f.Open()
 		if err != nil {
@@ -110,14 +155,11 @@ func TestIssue51ReopenGeneratedDocAsTemplate(t *testing.T) {
 			t.Fatalf("read [Content_Types].xml: %s", err)
 		}
 		_ = fr.Close()
+		contentTypesXML = buf.String()
+	}
+	if found != 1 {
+		t.Fatalf("%s has %d [Content_Types].xml entries, want exactly 1", docxPath, found)
+	}
 
-		matches := regexp.MustCompile(`Extension="png"`).FindAllString(buf.String(), -1)
-		if len(matches) != 1 {
-			t.Fatalf("[Content_Types].xml has %d Default Extension=\"png\" entries, want 1 (duplicate entries make Word reject the file): %s", len(matches), buf.String())
-		}
-	}
-	// Word rejects a docx with a missing or duplicated [Content_Types].xml entry in the zip.
-	if contentTypesFileCount != 1 {
-		t.Fatalf("zip has %d [Content_Types].xml entries, want exactly 1", contentTypesFileCount)
-	}
+	return contentTypesXML
 }
