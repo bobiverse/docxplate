@@ -1,7 +1,10 @@
 package docxplate_test
 
 import (
+	"archive/zip"
+	"bytes"
 	"fmt"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -45,5 +48,62 @@ func TestIssues(t *testing.T) {
 		}
 
 		// success: just needs to be parsed without errors
+	}
+}
+
+// TestIssue51ReopenGeneratedDocAsTemplate - a docx produced by ExportDocx() must be
+// re-openable as a template and, once an image placeholder is filled, must not end up
+// with duplicate `[Content_Types].xml` entries (invalid OOXML that Word refuses to open).
+func TestIssue51ReopenGeneratedDocAsTemplate(t *testing.T) {
+	type withBody struct{ Body string }
+	type withImages struct{ Images []*docxplate.Image }
+
+	tdoc, err := docxplate.OpenTemplate("test-data/issue.51.docx")
+	if err != nil {
+		t.Fatalf("OpenTemplate: %s", err)
+	}
+	tdoc.Params(withBody{Body: "Example Body"})
+	step1, err := tdoc.Bytes()
+	if err != nil {
+		t.Fatalf("step1 Bytes: %s", err)
+	}
+
+	// Re-open step1 output as a new template and fill the image placeholder
+	tdoc2, err := docxplate.OpenTemplateWithBytes(step1)
+	if err != nil {
+		t.Fatalf("re-open generated doc: %s", err)
+	}
+	tdoc2.Params(withImages{
+		Images: []*docxplate.Image{
+			{Path: "images/avatar-1.png", Width: 50, Height: 50},
+		},
+	})
+	step2, err := tdoc2.Bytes()
+	if err != nil {
+		t.Fatalf("step2 Bytes: %s", err)
+	}
+
+	zr, err := zip.NewReader(bytes.NewReader(step2), int64(len(step2)))
+	if err != nil {
+		t.Fatalf("output is not a valid zip: %s", err)
+	}
+	for _, f := range zr.File {
+		if f.Name != "[Content_Types].xml" {
+			continue
+		}
+		fr, err := f.Open()
+		if err != nil {
+			t.Fatalf("open [Content_Types].xml: %s", err)
+		}
+		buf := new(bytes.Buffer)
+		if _, err := buf.ReadFrom(fr); err != nil {
+			t.Fatalf("read [Content_Types].xml: %s", err)
+		}
+		_ = fr.Close()
+
+		matches := regexp.MustCompile(`Extension="png"`).FindAllString(buf.String(), -1)
+		if len(matches) != 1 {
+			t.Fatalf("[Content_Types].xml has %d Default Extension=\"png\" entries, want 1 (duplicate entries make Word reject the file): %s", len(matches), buf.String())
+		}
 	}
 }

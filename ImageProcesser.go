@@ -42,7 +42,7 @@ func processImage(img *Image) (imgXMLStr string, err error) {
 	imgExt := strings.TrimLeft(strings.ToLower(path.Ext(imgPath)), ".")
 	contentTypesName := "[Content_Types].xml"
 	contentTypesNode := t.fileToXMLStruct(contentTypesName)
-	contentTypesNode.iterate(func(node *xmlNode) bool {
+	contentTypesNode.childFirst.iterate(func(node *xmlNode) bool {
 		if strings.ToLower(node.Attr("Extension")) == imgExt {
 			isContainType = true
 			return true
