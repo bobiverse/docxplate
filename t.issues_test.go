@@ -4,6 +4,8 @@ import (
 	"archive/zip"
 	"bytes"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"regexp"
 	"strings"
@@ -122,6 +124,60 @@ func TestIssue51MultipleImageExtensions(t *testing.T) {
 	}
 }
 
+// TestIssue53FooterImage - an image placeholder in a footer must get its
+// relationship written to that footer's own rels part. Word resolves r:id
+// per part, so a relationship living only in document.xml.rels leaves the
+// footer image blank
+func TestIssue53FooterImage(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(server.Close)
+
+	originalDownloader := docxplate.DefaultDownloader
+	docxplate.DefaultDownloader = &docxplate.DownloadClient{}
+	t.Cleanup(func() { docxplate.DefaultDownloader = originalDownloader })
+
+	tdoc, err := docxplate.OpenTemplate("test-data/header-footer.docx")
+	if err != nil {
+		t.Fatalf("OpenTemplate: %s", err)
+	}
+
+	tdoc.Params(struct {
+		Name *docxplate.Image
+	}{
+		Name: &docxplate.Image{
+			URL:    server.URL + "/avatar.png?X-Amz-Signature=abc&X-Amz-Algorithm=AWS4",
+			Width:  50,
+			Height: 50,
+		},
+	})
+
+	docxBytes, err := tdoc.Bytes()
+	if err != nil {
+		t.Fatalf("Bytes: %s", err)
+	}
+
+	zipReader, err := zip.NewReader(bytes.NewReader(docxBytes), int64(len(docxBytes)))
+	if err != nil {
+		t.Fatalf("open generated docx: %s", err)
+	}
+
+	footerXML := readZipFile(t, zipReader, "word/footer1.xml")
+	if !strings.Contains(footerXML, "v:imagedata") {
+		t.Fatalf("footer does not contain an image")
+	}
+	relationshipID := regexp.MustCompile(`r:id="([^"]+)"`).FindStringSubmatch(footerXML)
+	if len(relationshipID) != 2 {
+		t.Fatalf("footer image relationship ID is missing: %s", footerXML)
+	}
+
+	footerRels := readZipFile(t, zipReader, "word/_rels/footer1.xml.rels")
+	if !strings.Contains(footerRels, `Id="`+relationshipID[1]+`"`) || !strings.Contains(footerRels, "relationships/image") {
+		t.Fatalf("footer image relationship is missing: %s", footerRels)
+	}
+}
+
 // readContentTypesXML - open docxPath as a zip and return the contents of its
 // [Content_Types].xml. Fails the test if the zip is invalid or the entry isn't found
 // exactly once (Word rejects a docx missing or duplicating that entry).
@@ -139,27 +195,45 @@ func readContentTypesXML(t *testing.T, docxPath string) string {
 	}
 
 	var found int
-	var contentTypesXML string
 	for _, f := range zr.File {
-		if f.Name != "[Content_Types].xml" {
-			continue
+		if f.Name == "[Content_Types].xml" {
+			found++
 		}
-		found++
-
-		fr, err := f.Open()
-		if err != nil {
-			t.Fatalf("open [Content_Types].xml: %s", err)
-		}
-		buf := new(bytes.Buffer)
-		if _, err := buf.ReadFrom(fr); err != nil {
-			t.Fatalf("read [Content_Types].xml: %s", err)
-		}
-		_ = fr.Close()
-		contentTypesXML = buf.String()
 	}
 	if found != 1 {
 		t.Fatalf("%s has %d [Content_Types].xml entries, want exactly 1", docxPath, found)
 	}
 
-	return contentTypesXML
+	return readZipFile(t, zr, "[Content_Types].xml")
+}
+
+// readZipFile - return the contents of a single entry of an open zip.
+// Fails the test if the entry is missing or unreadable
+func readZipFile(t *testing.T, zipReader *zip.Reader, filename string) string {
+	t.Helper()
+
+	for _, file := range zipReader.File {
+		if file.Name != filename {
+			continue
+		}
+
+		fileReader, err := file.Open()
+		if err != nil {
+			t.Fatalf("open %s: %s", filename, err)
+		}
+		defer func() {
+			if err := fileReader.Close(); err != nil {
+				t.Errorf("close %s: %s", filename, err)
+			}
+		}()
+
+		fileBytes := new(bytes.Buffer)
+		if _, err := fileBytes.ReadFrom(fileReader); err != nil {
+			t.Fatalf("read %s: %s", filename, err)
+		}
+		return fileBytes.String()
+	}
+
+	t.Fatalf("%s not found", filename)
+	return ""
 }
