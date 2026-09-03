@@ -154,3 +154,24 @@ func (t Template) GetAttrParam(attr string) []string {
 
 	return ret
 }
+
+// Existing relations node of a document part, or a new empty one
+func (t *Template) imageRelationshipNode(relName string) *xmlNode {
+	if relBytes, ok := t.modified[relName]; ok {
+		return t.bytesToXMLStruct(relBytes)
+	}
+	if relBytes, ok := t.added[relName]; ok {
+		return t.bytesToXMLStruct(relBytes)
+	}
+	if relNode := t.fileToXMLStruct(relName); relNode != nil {
+		return relNode
+	}
+
+	return &xmlNode{
+		XMLName: xml.Name{Local: "Relationships"},
+		Attrs: []xml.Attr{{
+			Name:  xml.Name{Local: "xmlns"},
+			Value: "http://schemas.openxmlformats.org/package/2006/relationships",
+		}},
+	}
+}

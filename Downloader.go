@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"path"
 )
@@ -40,8 +41,8 @@ func (DownloadClient) DownloadFile(_ context.Context, urlStr string) (tmpFile st
 		return "", http.ErrMissingFile
 	}
 	// Create file
-	tmpFile = fmt.Sprintf("%x%s", md5.Sum([]byte(urlStr)), path.Ext(urlStr)) // #nosec  G401 - allowed weak hash here
-	out, err := os.Create(tmpFile)                                           // #nosec  G304 - allowed filename variable here
+	tmpFile = fmt.Sprintf("%x%s", md5.Sum([]byte(urlStr)), urlExt(urlStr)) // #nosec  G401 - allowed weak hash here
+	out, err := os.Create(tmpFile)                                         // #nosec  G304 - allowed filename variable here
 	if err != nil {
 		return
 	}
@@ -54,7 +55,16 @@ func (DownloadClient) DownloadFile(_ context.Context, urlStr string) (tmpFile st
 	// Write body to file
 	_, err = io.Copy(out, resp.Body)
 	if err != nil {
-		return
+		return "", err
 	}
 	return tmpFile, nil
+}
+
+// File extension of an url path. Query and fragment are dropped, so a
+// pre-signed link (../avatar.png?X-Amz-Signature=..) still gives ".png"
+// Called only after http.Get(urlStr) succeeded, so urlStr already parses.
+func urlExt(urlStr string) string {
+	u, _ := url.Parse(urlStr)
+
+	return path.Ext(u.Path)
 }

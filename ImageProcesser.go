@@ -12,6 +12,11 @@ import (
 
 var imgXMLTpl = "<w:pict><v:shape style='width:%dpt;height:%dpt'><v:imagedata r:id='%s'/></v:shape></w:pict>"
 
+// Relationship ID format for images. The prefix is namespaced on purpose:
+// one ID is shared by every part referencing the image, so it must not
+// collide with Word's own rIdN in any of them
+const imageRelIDFormat = "rIdDocxplateImage%d"
+
 // Process image placeholder - add file, rels and return replace val
 func processImage(img *Image) (imgXMLStr string, err error) {
 	var imgPath string
@@ -70,29 +75,58 @@ func processImage(img *Image) (imgXMLStr string, err error) {
 		t.modified[contentTypesName] = structToXMLBytes(contentTypesNode)
 	}
 
-	// Add image to relations TODO walk all rels
-	var relNode *xmlNode
-	relName := "word/_rels/document.xml.rels"
-	if relNodeBytes, ok := t.modified[relName]; ok {
-		relNode = t.bytesToXMLStruct(relNodeBytes)
-	} else {
-		relNode = t.fileToXMLStruct(relName)
+	// The same image value can be used in the document, header, or footer.
+	// Each part needs its own relationship file, but the relationship ID can be shared.
+	// Images are processed while collecting params, before the file walk in Params(),
+	// so the part holding the placeholder is not known yet - register in all of them.
+	// Word ignores a relationship nothing references.
+	relNames := []string{}
+	for filename := range t.files {
+		for _, keyword := range modFileNamesLike {
+			if strings.Contains(filename, keyword) {
+				relNames = append(relNames, path.Dir(filename)+"/_rels/"+path.Base(filename)+".rels")
+				break
+			}
+		}
 	}
-	rid := fmt.Sprintf("rId%d", relNode.childLenght+1)
-	relNode.addSub(&xmlNode{
-		XMLName: xml.Name{
-			Space: "",
-			Local: "Relationship",
-		},
-		Attrs: []xml.Attr{
-			{Name: xml.Name{Space: "", Local: "Id"}, Value: rid},
-			{Name: xml.Name{Space: "", Local: "Type"}, Value: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image"},
-			{Name: xml.Name{Space: "", Local: "Target"}, Value: "media/" + imgPath},
-		},
-		parent: relNode,
-		isNew:  true,
-	})
-	t.modified[relName] = structToXMLBytes(relNode)
+
+	// Parse every part once, so the nodes checked for used IDs
+	// are the same nodes the new relationship is appended to
+	relNodes := map[string]*xmlNode{}
+	usedIDs := map[string]bool{}
+	for _, relName := range relNames {
+		relNodes[relName] = t.imageRelationshipNode(relName)
+		relNodes[relName].Walk(func(node *xmlNode) {
+			usedIDs[node.Attr("Id")] = true
+		})
+	}
+
+	rid := ""
+	for i := 1; rid == ""; i++ {
+		if candidate := fmt.Sprintf(imageRelIDFormat, i); !usedIDs[candidate] {
+			rid = candidate
+		}
+	}
+
+	for relName, relNode := range relNodes {
+		relNode.addSub(&xmlNode{
+			XMLName: xml.Name{Local: "Relationship"},
+			Attrs: []xml.Attr{
+				{Name: xml.Name{Local: "Id"}, Value: rid},
+				{Name: xml.Name{Local: "Type"}, Value: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image"},
+				{Name: xml.Name{Local: "Target"}, Value: "media/" + imgPath},
+			},
+			parent: relNode,
+			isNew:  true,
+		})
+
+		relBytes := structToXMLBytes(relNode)
+		if _, exists := t.files[relName]; exists {
+			t.modified[relName] = relBytes
+		} else {
+			t.added[relName] = relBytes
+		}
+	}
 
 	// Get replace xml of image
 	imgXMLStr = fmt.Sprintf(imgXMLTpl, img.Width, img.Height, rid)

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -16,13 +17,40 @@ func (et *errorTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	return nil, errors.New("transport error")
 }
 
+// TestDownloadFileQueryExtension - a pre-signed url carries its credentials in
+// the query string. The temp file must take its extension from the url path
+// only, otherwise the whole query ends up as the extension and later as the
+// [Content_Types].xml <Default Extension> and the relationship target
+func TestDownloadFileQueryExtension(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, "img") // #nosec G104
+	}))
+	defer server.Close()
+
+	tmpFpath, err := DefaultDownloader.DownloadFile(context.Background(), server.URL+"/avatar.png?X-Amz-Signature=abc&X-Amz-Algorithm=AWS4")
+	if err != nil {
+		t.Fatalf("DownloadFile: %s", err)
+	}
+	t.Cleanup(func() {
+		if err := os.Remove(tmpFpath); err != nil && !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("remove downloaded file: %s", err)
+		}
+	})
+
+	if ext := filepath.Ext(tmpFpath); ext != ".png" {
+		t.Fatalf("expected extension .png, got %q (%s)", ext, tmpFpath)
+	}
+}
+
 func TestDownloadFileInvalidCases(t *testing.T) {
 	t.Run("invalid URL", func(t *testing.T) {
 		tmpFpath, err := DefaultDownloader.DownloadFile(context.Background(), "::invalid-url")
 		if err == nil {
 			t.Fatalf("Expected an error, but got nil")
 		}
-		_ = os.Remove(tmpFpath)
+		if tmpFpath != "" {
+			t.Errorf("expected no temporary file, got %q", tmpFpath)
+		}
 	})
 
 	t.Run("transport error", func(t *testing.T) {
@@ -45,7 +73,9 @@ func TestDownloadFileInvalidCases(t *testing.T) {
 		if err == nil {
 			t.Fatalf("Expected an error, but got nil")
 		}
-		_ = os.Remove(tmpFpath)
+		if tmpFpath != "" {
+			t.Errorf("expected no temporary file, got %q", tmpFpath)
+		}
 	})
 
 	t.Run("non-200 status code", func(t *testing.T) {
@@ -58,7 +88,9 @@ func TestDownloadFileInvalidCases(t *testing.T) {
 		if !errors.Is(err, http.ErrMissingFile) {
 			t.Fatalf("Expected http.ErrMissingFile, but got: %v", err)
 		}
-		_ = os.Remove(tmpFpath)
+		if tmpFpath != "" {
+			t.Errorf("expected no temporary file, got %q", tmpFpath)
+		}
 	})
 
 	t.Run("server read error", func(t *testing.T) {
@@ -72,7 +104,9 @@ func TestDownloadFileInvalidCases(t *testing.T) {
 		if err == nil {
 			t.Fatalf("Expected an error, but got nil")
 		}
-		_ = os.Remove(tmpFpath)
+		if tmpFpath != "" {
+			t.Errorf("expected no temporary file, got %q", tmpFpath)
+		}
 	})
 	//
 	// t.Run("create temp file error", func(t *testing.T) {
