@@ -286,6 +286,19 @@ func (p *Param) RunTrigger(xnode *xmlNode) {
 		return
 	}
 
+	// :placeholder scope must only touch this param's own placeholder text.
+	// `xnode` here is already the exact node whose Content matched this
+	// placeholder, and it may be a shared XML run holding a sibling
+	// placeholder's already-rendered value (e.g. Word merges adjacent
+	// placeholders with no formatting boundary into one run) - clearing or
+	// deleting the whole node like the other scopes do would wipe that
+	// sibling's value too. So strip just this placeholder's own text instead.
+	if p.Trigger.Scope == TriggerScopePlaceholder {
+		xnode.Content = bytes.ReplaceAll(xnode.Content, []byte(p.Placeholder()), nil)
+		xnode.Content = bytes.ReplaceAll(xnode.Content, []byte(p.PlaceholderKey()), nil)
+		return
+	}
+
 	// 1. Scope - find affected node
 	var ntypes = NodeSingleTypes
 	switch p.Trigger.Scope {
