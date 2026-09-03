@@ -44,7 +44,7 @@ func (DownloadClient) DownloadFile(_ context.Context, urlStr string) (tmpFile st
 	tmpFile = fmt.Sprintf("%x%s", md5.Sum([]byte(urlStr)), urlExt(urlStr)) // #nosec  G401 - allowed weak hash here
 	out, err := os.Create(tmpFile)                                         // #nosec  G304 - allowed filename variable here
 	if err != nil {
-		return
+		return "", err
 	}
 	defer func() {
 		if err := out.Close(); err != nil {
@@ -53,8 +53,10 @@ func (DownloadClient) DownloadFile(_ context.Context, urlStr string) (tmpFile st
 	}()
 
 	// Write body to file
-	_, err = io.Copy(out, resp.Body)
-	if err != nil {
+	if _, err = io.Copy(out, resp.Body); err != nil {
+		if rmErr := os.Remove(tmpFile); rmErr != nil {
+			log.Printf("download: remove: %s", rmErr)
+		}
 		return "", err
 	}
 	return tmpFile, nil
